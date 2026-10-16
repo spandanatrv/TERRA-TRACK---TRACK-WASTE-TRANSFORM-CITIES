@@ -1,0 +1,2539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartWaste — Manager Dashboard</title>
+  <meta name="description" content="Operations Control Center for SmartWaste — assign workers, monitor real-time coverage, analyze pickup times, and manage blackspots.">
+  
+  <!-- Leaflet & Leaflet.draw -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #070d14;
+      --surface: #0c1520;
+      --card: #101c2a;
+      --border: #182436;
+      --accent: #3b82f6;
+      --green: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --text: #e8f0fe;
+      --muted: #64748b;
+      --r: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top Header ── */
+    .top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      height: 62px;
+      z-index: 1000;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      font-size: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 10px;
+    }
+    .brand-name {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .refresh-badge {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: 'Space Grotesk', sans-serif;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .mode-pill {
+      background: rgba(59, 130, 246, 0.16);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 14px;
+      border-radius: 99px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .switch-mode-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      transition: color 0.2s, transform 0.15s;
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+    .switch-mode-link:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+      transform: translateX(-2px);
+    }
+
+    /* ── Main Layout ── */
+    .main-layout {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 62px);
+      overflow: hidden;
+    }
+
+    /* ── Left Icon Nav (64px) ── */
+    .left-nav {
+      width: 64px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 0;
+      gap: 10px;
+      flex-shrink: 0;
+      z-index: 900;
+    }
+    .nav-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: transparent;
+      border: 1px solid transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--muted);
+    }
+    .nav-icon .ico {
+      font-size: 20px;
+      line-height: 1;
+    }
+    .nav-icon .nav-label {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 3px;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .nav-icon:hover {
+      border-color: var(--border);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .nav-icon.active {
+      background: rgba(59, 130, 246, 0.14);
+      border-color: var(--accent);
+      color: #93c5fd;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+    }
+
+    /* ── Content Area ── */
+    .content-area {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+      background: var(--bg);
+    }
+
+    /* ── Common Panel Styles ── */
+    .panel {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      gap: 20px;
+      flex-direction: column;
+    }
+    .panel.active {
+      display: flex;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+    .card-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text);
+    }
+    .card-title span.title-text {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── 4-Box Stat Grid ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .stat-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 20px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-box::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+    }
+    .stat-blue::before { background: var(--accent); }
+    .stat-green::before { background: var(--green); }
+    .stat-amber::before { background: var(--warn); }
+    .stat-red::before { background: var(--bad); }
+
+    .stat-val {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 34px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+    .stat-blue .stat-val { color: #60a5fa; }
+    .stat-green .stat-val { color: #4ade80; }
+    .stat-amber .stat-val { color: #fbbf24; }
+    .stat-red .stat-val { color: #f87171; }
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Forms & Inputs ── */
+    .field-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .field-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 10px 14px;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .field-input:focus {
+      border-color: var(--accent);
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+    }
+    .field-group {
+      margin-bottom: 14px;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    /* ── Buttons ── */
+    .btn-primary {
+      padding: 10px 22px;
+      border: none;
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: #fff;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-primary:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+    }
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 11px;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .btn-red {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .btn-red:hover {
+      background: rgba(239, 68, 68, 0.28);
+    }
+    .btn-green {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .btn-green:hover {
+      background: rgba(34, 197, 94, 0.28);
+    }
+    .btn-blue {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .btn-blue:hover {
+      background: rgba(59, 130, 246, 0.28);
+    }
+    .btn-amber {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .btn-amber:hover {
+      background: rgba(245, 158, 11, 0.28);
+    }
+
+    /* ── Tables ── */
+    .data-table-wrap {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+    .data-table th {
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(24, 36, 54, 0.6);
+      vertical-align: middle;
+    }
+    .data-table tr:last-child td {
+      border: none;
+    }
+    .data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 99px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .badge-green { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .badge-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-gray { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
+
+    /* ── Worker Status Dots ── */
+    .online-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: inline-block;
+    }
+    .online {
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+      animation: onlinePulse 1.6s infinite;
+    }
+    .offline {
+      background: #64748b;
+    }
+    @keyframes onlinePulse {
+      0%, 100% { opacity: 0.6; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* ── Row items ── */
+    .worker-row-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      transition: all 0.2s;
+    }
+    .worker-row-card:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .worker-row-card.active-sidebar {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.08);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+    }
+
+    /* ── 2-Column Panel Layouts ── */
+    .two-col-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    /* ── Assign Map & Draw Controls ── */
+    #assignMapContainer {
+      height: 400px;
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      position: relative;
+    }
+    .resident-count-pill {
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      color: #93c5fd;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Panel 3: Coverage Map ── */
+    #panel-map {
+      padding: 0;
+      gap: 0;
+      flex-direction: row;
+      height: 100%;
+    }
+    .map-sidebar-left {
+      width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    .map-sidebar-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .map-sidebar-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+    }
+    .map-sidebar-footer {
+      padding: 14px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .coverage-map-wrap {
+      flex: 1;
+      position: relative;
+      height: 100%;
+    }
+    #coverageMap {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* ── Animated Route Polyline ── */
+    @keyframes routeDash {
+      to {
+        stroke-dashoffset: -32;
+      }
+    }
+    .animated-route-path {
+      stroke-dasharray: 8, 8 !important;
+      animation: routeDash 1.2s linear infinite !important;
+    }
+
+    /* ── Map Legend ── */
+    .map-legend-box {
+      position: absolute;
+      bottom: 24px;
+      left: 20px;
+      z-index: 800;
+      background: rgba(7, 13, 20, 0.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 11px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    .leg-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .leg-item:last-child { margin: 0; }
+    .leg-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Panel 4: Time Analysis ── */
+    .time-analysis-layout {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 20px;
+      flex: 1;
+    }
+    #timeMapContainer {
+      height: 100%;
+      min-height: 480px;
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      position: relative;
+    }
+    .time-bar-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 120px;
+      margin: 20px 0 10px 0;
+      padding-top: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .time-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+    }
+    .t-bar {
+      width: 100%;
+      background: rgba(59, 130, 246, 0.2);
+      border-radius: 4px 4px 0 0;
+      position: relative;
+      min-height: 4px;
+      transition: height 0.4s ease;
+    }
+    .t-bar.best {
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+    }
+    .t-bar-count {
+      position: absolute;
+      top: -18px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .t-bar.best .t-bar-count {
+      color: #93c5fd;
+    }
+    .t-bar-label {
+      font-size: 9px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 6px;
+      font-family: 'Space Grotesk', sans-serif;
+      transform: rotate(-30deg);
+      white-space: nowrap;
+    }
+
+    /* ── Panel 5: Blackspots (3-Column Layout with Maximize) ── */
+    .spots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      flex: 1;
+      min-height: 0;
+    }
+    .spots-grid.maximized-col-1 { grid-template-columns: 1fr; }
+    .spots-grid.maximized-col-1 .col-panel:not(#colUserBlackspots) { display: none; }
+    .spots-grid.maximized-col-2 { grid-template-columns: 1fr; }
+    .spots-grid.maximized-col-2 .col-panel:not(#colWorkerCleaned) { display: none; }
+    .spots-grid.maximized-col-3 { grid-template-columns: 1fr; }
+    .spots-grid.maximized-col-3 .col-panel:not(#colAssignedBlackspots) { display: none; }
+
+    .col-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .col-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .col-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-maximize {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .btn-maximize:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .col-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .blackspot-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .blackspot-card:hover {
+      border-color: rgba(59, 130, 246, 0.35);
+      transform: translateY(-1px);
+    }
+    .blackspot-thumb {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      cursor: pointer;
+      display: block;
+      transition: opacity 0.2s;
+    }
+    .blackspot-thumb:hover {
+      opacity: 0.9;
+    }
+    .blackspot-placeholder {
+      height: 100px;
+      background: rgba(239, 68, 68, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      cursor: pointer;
+    }
+    .blackspot-body {
+      padding: 12px;
+    }
+    .waste-bar {
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.06);
+      margin: 8px 0;
+      overflow: hidden;
+      display: flex;
+    }
+    .waste-bar-wet {
+      background: var(--green);
+      height: 100%;
+    }
+    .waste-bar-dry {
+      background: var(--warn);
+      height: 100%;
+    }
+
+    /* ── Panel 6: Complaints (Alerts) ── */
+    .complaint-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+    }
+    .complaint-card:hover {
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+    .c-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .c-verdict-box {
+      font-size: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .c-verdict-box.visited {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.25);
+      color: #4ade80;
+    }
+    .c-verdict-box.missed {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #f87171;
+    }
+    .c-verdict-box.pending {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      color: #fbbf24;
+    }
+
+    /* ── Modals ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2500;
+      background: rgba(3, 7, 12, 0.78);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-dialog {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      max-width: 520px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .modal-header h3 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+    }
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 20px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .modal-close-btn:hover { color: var(--text); }
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    .btn-secondary {
+      padding: 10px 18px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-secondary:hover {
+      border-color: var(--text);
+      color: var(--text);
+    }
+
+    /* ── Leaflet Draw Dark Styles ── */
+    .leaflet-draw-toolbar a {
+      background-color: var(--card) !important;
+      border-color: var(--border) !important;
+      color: var(--text) !important;
+    }
+    .leaflet-draw-toolbar a:hover {
+      background-color: var(--surface) !important;
+    }
+    .leaflet-draw-actions {
+      background-color: var(--card) !important;
+    }
+    .leaflet-draw-actions a {
+      background-color: var(--card) !important;
+      color: var(--text) !important;
+    }
+
+    /* ── Scrollbars ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #263852; }
+  </style>
+  <link rel="stylesheet" href="/static/chatbot.css">
+</head>
+<body>
+
+<!-- ═══════════════ TOP HEADER ═══════════════ -->
+<header class="top-header">
+  <div class="brand">
+    <div class="brand-icon">📊</div>
+    <div>
+      <div class="brand-name">SmartWaste Manager</div>
+      <div class="brand-sub">Operations Control Center</div>
+    </div>
+  </div>
+  <div class="top-right">
+    <div id="lastRefresh" class="refresh-badge">Refreshed —</div>
+    <span class="mode-pill">MANAGER</span>
+    <a href="/" class="switch-mode-link">← Switch Mode</a>
+  </div>
+</header>
+
+<!-- ═══════════════ MAIN LAYOUT ═══════════════ -->
+<div class="main-layout">
+  
+  <!-- ── Left Icon Nav (64px) ── -->
+  <nav class="left-nav">
+    <button class="nav-icon active" id="nav-overview" onclick="switchPanel('overview')" title="Overview">
+      <span class="ico">📈</span>
+      <span class="nav-label">Stats</span>
+    </button>
+    <button class="nav-icon" id="nav-assign" onclick="switchPanel('assign')" title="Assign Worker">
+      <span class="ico">👷</span>
+      <span class="nav-label">Assign</span>
+    </button>
+    <button class="nav-icon" id="nav-map" onclick="switchPanel('map')" title="Coverage Map">
+      <span class="ico">🗺️</span>
+      <span class="nav-label">Map</span>
+    </button>
+    <button class="nav-icon" id="nav-time" onclick="switchPanel('time')" title="Time Analysis">
+      <span class="ico">⏱️</span>
+      <span class="nav-label">Time</span>
+    </button>
+    <button class="nav-icon" id="nav-spots" onclick="switchPanel('spots')" title="Blackspot Management">
+      <span class="ico">🗑️</span>
+      <span class="nav-label">Spots</span>
+    </button>
+    <button class="nav-icon" id="nav-alerts" onclick="switchPanel('alerts')" title="Complaints & Alerts">
+      <span class="ico">⚠️</span>
+      <span class="nav-label">Alerts</span>
+    </button>
+  </nav>
+
+  <!-- ── Content Area ── -->
+  <main class="content-area">
+
+    <!-- ═══════════ PANEL 1: OVERVIEW (Stats) ═══════════ -->
+    <section class="panel active" id="panel-overview">
+      <div class="stat-grid">
+        <div class="stat-box stat-blue">
+          <div class="stat-val" id="statWorkers">0</div>
+          <div class="stat-label">Workers Registered</div>
+        </div>
+        <div class="stat-box stat-green">
+          <div class="stat-val" id="statCoverage">0</div>
+          <div class="stat-label">GPS Points Today</div>
+        </div>
+        <div class="stat-box stat-amber">
+          <div class="stat-val" id="statBlackspots">0</div>
+          <div class="stat-label">Blackspot Reports</div>
+        </div>
+        <div class="stat-box stat-red">
+          <div class="stat-val" id="statComplaints">0</div>
+          <div class="stat-label">Active Complaints</div>
+        </div>
+      </div>
+
+      <!-- Worker list card -->
+      <div class="card">
+        <div class="card-title">
+          <span class="title-text">👷 Registered Field Workers</span>
+          <span style="font-size:12px;color:var(--muted);font-weight:500;">Live Status & Management</span>
+        </div>
+        <div id="workerListContainer">
+          <p style="color:var(--muted);font-size:13px;">Loading workers...</p>
+        </div>
+      </div>
+
+      <!-- Recent Assignments card -->
+      <div class="card">
+        <div class="card-title">
+          <span class="title-text">📋 Recent Assignments</span>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Worker</th>
+                <th>Area Name</th>
+                <th>Driver</th>
+                <th>Vehicle</th>
+                <th>Scheduled Time</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="overviewAssignmentsBody">
+              <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">No assignments recorded yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PANEL 2: ASSIGN ═══════════ -->
+    <section class="panel" id="panel-assign">
+      <div class="two-col-grid">
+        <!-- Left: Form -->
+        <div class="card">
+          <div class="card-title">
+            <span class="title-text">👷 Assign Worker to Area</span>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label">Select Worker *</div>
+            <select id="assignWorkerSelect" class="field-input">
+              <option value="">— Select Worker —</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="field-group">
+              <div class="field-label">Area Name *</div>
+              <input id="assignAreaName" class="field-input" placeholder="e.g. Ward 4 - Jayanagar">
+            </div>
+            <div class="field-group">
+              <div class="field-label">Driver Name</div>
+              <input id="assignDriverName" class="field-input" placeholder="Driver full name">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="field-group">
+              <div class="field-label">Vehicle Number <span style="color:var(--muted);text-transform:none;">(optional)</span></div>
+              <input id="assignVehicle" class="field-input" placeholder="e.g. KA 05 MB 9988">
+            </div>
+            <div class="field-group">
+              <div class="field-label">Scheduled Time</div>
+              <input type="time" id="assignScheduledTime" class="field-input" value="07:00">
+            </div>
+          </div>
+
+          <!-- Resident count display -->
+          <div class="resident-count-pill" id="assignResidentCountBox">
+            <span>👥</span>
+            <span id="assignResidentCount">Draw an area on the map to count residents</span>
+          </div>
+
+          <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="submitAssignment()">
+            <span>✅ Create Assignment</span>
+          </button>
+          <div id="assignStatusMsg" style="margin-top:10px;font-size:13px;font-weight:600;"></div>
+        </div>
+
+        <!-- Right: Map for drawing -->
+        <div class="card" style="display:flex;flex-direction:column;">
+          <div class="card-title">
+            <span class="title-text">🗺️ Draw Collection Boundary</span>
+            <span style="font-size:11px;color:var(--muted);font-weight:500;">Polygon / Circle / Rectangle</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+            Use the draw toolbar on the left of the map. Shape will be shaded in red and residents inside will be counted automatically.
+          </div>
+          <div id="assignMapContainer"></div>
+        </div>
+      </div>
+
+      <!-- Assignments Table Below -->
+      <div class="card">
+        <div class="card-title">
+          <span class="title-text">📋 Active Area Assignments</span>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Worker</th>
+                <th>Area Name</th>
+                <th>Driver</th>
+                <th>Vehicle</th>
+                <th>Dispatch Time</th>
+                <th>Boundary Polygon</th>
+              </tr>
+            </thead>
+            <tbody id="allAssignmentsTableBody">
+              <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">No assignments recorded yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PANEL 3: COVERAGE MAP ═══════════ -->
+    <section class="panel" id="panel-map">
+      <!-- Left sidebar (280px) -->
+      <aside class="map-sidebar-left">
+        <div class="map-sidebar-header">
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;">Coverage Monitoring</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Click worker to view sector polygon</div>
+        </div>
+        <div class="map-sidebar-body" id="mapWorkerSidebarList">
+          <p style="color:var(--muted);font-size:12px;">Loading workers...</p>
+        </div>
+        <div class="map-sidebar-footer">
+          <button class="btn-primary" style="width:100%;" onclick="refreshCoverageMap()">🔄 Refresh Coverage</button>
+          <button class="btn-sm btn-red" style="width:100%;justify-content:center;" onclick="confirmResetCoverage()">🗑️ Reset Today's Coverage</button>
+        </div>
+      </aside>
+
+      <!-- Right Map -->
+      <div class="coverage-map-wrap">
+        <div id="coverageMap"></div>
+        <div class="map-legend-box">
+          <div class="leg-item"><span class="leg-dot" style="background:#ef4444;"></span>Uncovered Resident (Red)</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#22c55e;"></span>Worker Coverage Points (Green)</div>
+          <div class="leg-item"><span style="font-size:14px;line-height:1;">🚛</span>Live Worker Location</div>
+          <div class="leg-item"><span class="leg-dot" style="background:rgba(239,68,68,0.3);border:1px solid #ef4444;"></span>Assigned Sector Boundary</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PANEL 4: TIME ANALYSIS ═══════════ -->
+    <section class="panel" id="panel-time">
+      <div class="time-analysis-layout">
+        <!-- Left Config & Chart -->
+        <div class="card" style="display:flex;flex-direction:column;">
+          <div class="card-title">
+            <span class="title-text">⏱️ Location-Based Time Analysis</span>
+          </div>
+          <p style="color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:16px;">
+            Click anywhere on the map to analyze resident preferences in that area. The system aggregates all preferred collection times in the selected radius.
+          </p>
+
+          <div class="field-group">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span class="field-label" style="margin:0;">Analysis Radius</span>
+              <span id="radiusValDisplay" style="font-size:12px;font-weight:700;color:#60a5fa;font-family:'Space Grotesk',sans-serif;">2000m (2.0 km)</span>
+            </div>
+            <input type="range" id="timeRadiusSlider" min="500" max="5000" step="100" value="2000" style="width:100%;cursor:pointer;" oninput="updateRadius(this.value)">
+          </div>
+
+          <button class="btn-sm btn-blue" style="margin-bottom:18px;align-self:flex-start;" onclick="useMyLocationForAnalysis()">
+            📍 Use My Location
+          </button>
+
+          <!-- Result Display Box -->
+          <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Recommended Collection Window</div>
+            <div id="timeRecDisplay" style="font-family:'Space Grotesk',sans-serif;font-size:38px;font-weight:800;color:var(--accent);margin:6px 0;">—</div>
+            <div id="timeSubDisplay" style="font-size:13px;color:var(--muted);">Click map or choose location to analyze</div>
+            <div id="timeTotalDisplay" style="font-size:12px;color:var(--muted);margin-top:4px;">Total Responses: 0</div>
+          </div>
+
+          <!-- Bar Chart -->
+          <div style="margin-top:16px;">
+            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">30-Minute Slot Distribution</div>
+            <div class="time-bar-chart" id="timeBarChart"></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:16px;">
+              <span style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;margin-right:4px;"></span>
+              Most popular slot is highlighted in blue.
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Map -->
+        <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+          <div id="timeMapContainer"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PANEL 5: SPOTS (Blackspots) ═══════════ -->
+    <section class="panel" id="panel-spots">
+      <div class="spots-grid" id="spotsContainer">
+        
+        <!-- Column 1: User Blackspot Reports (Red Theme) -->
+        <div class="col-panel" id="colUserBlackspots">
+          <div class="col-header" style="background:rgba(239,68,68,0.08);border-bottom:1px solid rgba(239,68,68,0.2);">
+            <div class="col-header-left">
+              <span>📸</span>
+              <span>User Blackspot Reports</span>
+              <span class="badge badge-red" id="badgeCol1">0</span>
+            </div>
+            <button class="btn-maximize" onclick="toggleMaximize(1)" title="Maximize Column">⤢</button>
+          </div>
+          <div class="col-body" id="listUserBlackspots">
+            <p style="color:var(--muted);font-size:12px;">Loading reports...</p>
+          </div>
+        </div>
+
+        <!-- Column 2: Worker Cleaned Proofs (Green Theme) -->
+        <div class="col-panel" id="colWorkerCleaned">
+          <div class="col-header" style="background:rgba(34,197,94,0.08);border-bottom:1px solid rgba(34,197,94,0.2);">
+            <div class="col-header-left">
+              <span>✅</span>
+              <span>Worker Cleaned Proofs</span>
+              <span class="badge badge-green" id="badgeCol2">0</span>
+            </div>
+            <button class="btn-maximize" onclick="toggleMaximize(2)" title="Maximize Column">⤢</button>
+          </div>
+          <div class="col-body" id="listWorkerCleaned">
+            <p style="color:var(--muted);font-size:12px;">Loading cleaned proofs...</p>
+          </div>
+        </div>
+
+        <!-- Column 3: Assigned Blackspots (Amber Theme) -->
+        <div class="col-panel" id="colAssignedBlackspots">
+          <div class="col-header" style="background:rgba(245,158,11,0.08);border-bottom:1px solid rgba(245,158,11,0.2);">
+            <div class="col-header-left">
+              <span>👷</span>
+              <span>Assigned Blackspots</span>
+              <span class="badge badge-amber" id="badgeCol3">0</span>
+            </div>
+            <button class="btn-maximize" onclick="toggleMaximize(3)" title="Maximize Column">⤢</button>
+          </div>
+          <div class="col-body" id="listAssignedBlackspots">
+            <p style="color:var(--muted);font-size:12px;">Loading assigned spots...</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═══════════ PANEL 6: ALERTS (Complaints) ═══════════ -->
+    <section class="panel" id="panel-alerts">
+      <div class="card">
+        <div class="card-title">
+          <span class="title-text">⚠️ Resident Missed-Truck Complaints</span>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button class="btn-sm btn-blue" onclick="verifyAllComplaints()">⚡ Run Verification Now</button>
+          </div>
+        </div>
+        <p style="color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:18px;">
+          The system cross-references each complaint's location with the worker GPS coverage trails for that day to automatically detect whether the collection truck visited within 200m.
+        </p>
+
+        <!-- Count Badges -->
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+          <span class="badge badge-amber" id="badgePendingCount" style="padding:6px 14px;font-size:11px;">0 Unverified</span>
+          <span class="badge badge-green" id="badgeVisitedCount" style="padding:6px 14px;font-size:11px;">0 Truck Visited</span>
+          <span class="badge badge-red" id="badgeMissedCount" style="padding:6px 14px;font-size:11px;">0 Missed</span>
+        </div>
+
+        <div id="complaintsListContainer">
+          <p style="color:var(--muted);font-size:13px;">Loading complaints...</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══════════════ MODALS ═══════════════ -->
+
+<!-- 1. Blackspot Detail Modal -->
+<div class="modal-overlay hidden" id="blackspotDetailModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3>🗑️ Blackspot Report Details</h3>
+      <button class="modal-close-btn" onclick="closeBlackspotDetailModal()">✕</button>
+    </div>
+    <div id="bsDetailModalContent">
+      <!-- Full size image -->
+      <div id="bsModalImageContainer" style="margin-bottom:16px;"></div>
+      
+      <div style="display:grid;grid-template-columns:1fr;gap:10px;font-size:13px;">
+        <div>📍 <strong>Location:</strong> <span id="bsModalLoc" style="color:#93c5fd;">—</span></div>
+        <div>📅 <strong>Uploaded:</strong> <span id="bsModalDate" style="color:var(--muted);">—</span></div>
+        <div>📝 <strong>Description:</strong> <span id="bsModalDesc">—</span></div>
+        
+        <div style="margin-top:6px;">
+          <strong>Waste Classification:</strong> <span id="bsModalClass">—</span>
+          <div class="waste-bar" style="height:8px;margin-top:6px;">
+            <div id="bsModalWetBar" class="waste-bar-wet" style="width:0%;"></div>
+            <div id="bsModalDryBar" class="waste-bar-dry" style="width:0%;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
+            <span id="bsModalWetPct">🟢 Wet: 0%</span>
+            <span id="bsModalDryPct">🟡 Dry: 0%</span>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:6px;">
+          <div>🚛 <strong>Truck Assigned:</strong> <span id="bsModalTruckAssigned">—</span></div>
+          <div id="bsModalDispatchInfo" style="margin-top:4px;color:var(--muted);font-size:12px;"></div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:10px;">
+          <div>🧹 <strong>Cleaned Status:</strong> <span id="bsModalCleanedStatus">—</span></div>
+          <div id="bsModalCleanedDetails" style="margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm btn-red" id="bsModalDeleteBtn" onclick="deleteBlackspotFromModal()">🗑️ Delete Blackspot</button>
+      <button class="btn-secondary" onclick="closeBlackspotDetailModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- 2. Dispatch Modal -->
+<div class="modal-overlay hidden" id="dispatchModal">
+  <div class="modal-dialog" style="max-width:440px;">
+    <div class="modal-header">
+      <h3>🚛 Dispatch Collection Worker</h3>
+      <button class="modal-close-btn" onclick="closeDispatchModal()">✕</button>
+    </div>
+    <input type="hidden" id="dispatchSpotId">
+    
+    <div class="field-group">
+      <div class="field-label">Scheduled Dispatch Time</div>
+      <input type="time" id="dispatchTime" class="field-input" value="08:00">
+    </div>
+
+    <div class="field-group">
+      <div class="field-label">Urgency Level</div>
+      <select id="dispatchUrgency" class="field-input">
+        <option value="Normal">Normal — Routine Schedule</option>
+        <option value="High">High — Within 2 Hours</option>
+        <option value="Critical">Critical — Immediate Dispatch</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <div class="field-label">Assign Worker</div>
+      <select id="dispatchWorkerSelect" class="field-input">
+        <option value="">— Select Worker —</option>
+      </select>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeDispatchModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitDispatch()">🚀 Confirm Dispatch</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<script>
+  // ── Global Constants & State ──
+  const WORKER_COLORS = ['#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
+  const DARK_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const TILE_OPTS = {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  };
+
+  let activePanel = 'overview';
+  let drawnPolygon = null;
+  let allWorkers = [];
+  let allAssignments = [];
+  let allBlackspots = [];
+  let allCleaned = [];
+  let allResidents = [];
+
+  // Maps & Layer Groups
+  let assignMap = null;
+  let assignDrawControl = null;
+  let assignDrawnItems = null;
+  let assignResidentLayer = null;
+
+  let coverageMap = null;
+  let covResidentLayer = null;
+  let covWorkerTrailLayer = null;
+  let covPolygonLayer = null;
+  let covTruckMarkerLayer = null;
+  let selectedWorkerHighlight = null;
+
+  let timeMap = null;
+  let timeCircleLayer = null;
+  let timeResidentLayer = null;
+  let lastTimeCoords = { lat: 12.9352, lon: 77.5350 };
+
+  // ── Polygon Parse Helper (handles both string and array) ──
+  function parsePoly(raw) {
+    if (!raw) return null;
+    if (Array.isArray(raw)) return raw.length >= 3 ? raw : null;
+    if (typeof raw === 'string') {
+      try { const p = JSON.parse(raw); return Array.isArray(p) && p.length >= 3 ? p : null; } catch(e) { return null; }
+    }
+    return null;
+  }
+
+  // ── Fetch Helper ──
+  const J = async (url, method = 'GET', body) => {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      return await res.json();
+    } catch (e) {
+      console.error(`API Error ${method} ${url}:`, e);
+      return [];
+    }
+  };
+
+  function escHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function fmtTime(t) {
+    if (!t) return '—';
+    try {
+      const [h, m] = t.split(':').map(Number);
+      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+    } catch (e) { return t; }
+  }
+
+  function updateRefreshTime() {
+    const el = document.getElementById('lastRefresh');
+    if (el) el.textContent = 'Refreshed ' + new Date().toLocaleTimeString();
+  }
+
+  // Point in Polygon Ray-Casting algorithm
+  function pointInPolygon(pt, vs) {
+    if (!vs || vs.length < 3) return false;
+    const x = pt[0], y = pt[1];
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+      const xi = vs[i][0], yi = vs[i][1];
+      const xj = vs[j][0], yj = vs[j][1];
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  // ── Navigation Switching ──
+  function switchPanel(name) {
+    activePanel = name;
+    document.querySelectorAll('.nav-icon').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+
+    const navBtn = document.getElementById('nav-' + name);
+    const panelEl = document.getElementById('panel-' + name);
+    if (navBtn) navBtn.classList.add('active');
+    if (panelEl) panelEl.classList.add('active');
+
+    if (name === 'overview') {
+      loadOverview();
+    } else if (name === 'assign') {
+      initAssignMap();
+      loadAssignPanelData();
+    } else if (name === 'map') {
+      initCoverageMap();
+      refreshCoverageMap();
+    } else if (name === 'time') {
+      initTimeMap();
+      loadTimeAnalysisMap();
+    } else if (name === 'spots') {
+      loadBlackspotsPanel();
+    } else if (name === 'alerts') {
+      loadComplaints();
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // PANEL 1: OVERVIEW
+  // ══════════════════════════════════════════════════════════
+  async function loadOverview() {
+    try {
+      const [workers, coverage, blackspots, complaints, assignments] = await Promise.all([
+        J('/api/manager/workers'),
+        J('/api/manager/coverage'),
+        J('/api/manager/blackspots'),
+        J('/api/manager/complaints'),
+        J('/api/manager/assignments')
+      ]);
+
+      allWorkers = workers || [];
+      allAssignments = assignments || [];
+
+      document.getElementById('statWorkers').textContent = allWorkers.length;
+      document.getElementById('statCoverage').textContent = (coverage || []).length;
+      document.getElementById('statBlackspots').textContent = (blackspots || []).length;
+      document.getElementById('statComplaints').textContent = (complaints || []).filter(c => c.verified_status !== 'Truck Visited').length;
+      updateRefreshTime();
+
+      // Render Registered Workers List
+      const wlContainer = document.getElementById('workerListContainer');
+      if (!allWorkers.length) {
+        wlContainer.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:10px 0;">No field workers registered yet.</p>';
+      } else {
+        wlContainer.innerHTML = allWorkers.map((w, idx) => {
+          const color = WORKER_COLORS[idx % WORKER_COLORS.length];
+          const asgn = allAssignments.find(a => a.worker_id === w.id);
+          const hasPoly = asgn && parsePoly(asgn.polygon);
+          return `
+            <div class="worker-row-card">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span class="online-dot ${w.online ? 'online' : 'offline'}"></span>
+                <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${color};" title="Worker Map Color"></span>
+                <div>
+                  <div style="font-weight:700;font-size:13px;color:var(--text);">${escHtml(w.name)}</div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+                    🚛 ${escHtml(w.vehicle || 'On Foot')} &bull; Sector: <strong style="color:#94a3b8;">${escHtml(w.assigned_area || 'Unassigned')}</strong>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="badge ${w.online ? 'badge-green' : 'badge-gray'}" title="${w.online ? 'Worker phone GPS is actively sending data' : 'Worker GPS is off – starts when worker taps Start GPS on their phone'}">${w.online ? '🟢 ONLINE' : '⚫ OFFLINE'}</span>
+                ${hasPoly ? `<button class="btn-sm btn-blue" onclick="viewWorkerAreaOnMap('${w.id}', ${idx})">🗺️ View Area</button>` : ''}
+                <button class="btn-sm btn-red" onclick="deleteWorker('${w.id}', '${escHtml(w.name)}')">
+                  🗑️ Delete
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Render Recent Assignments Table
+      const tb = document.getElementById('overviewAssignmentsBody');
+      if (!allAssignments.length) {
+        tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">No assignments recorded yet.</td></tr>';
+      } else {
+        tb.innerHTML = allAssignments.slice(0, 8).map(a => `
+          <tr>
+            <td><strong>${escHtml(a.worker_name || a.worker_id)}</strong></td>
+            <td>${escHtml(a.area_name)}</td>
+            <td>${escHtml(a.driver_name || '—')}</td>
+            <td>${escHtml(a.vehicle || a.worker_vehicle || '—')}</td>
+            <td><span class="badge badge-blue">${fmtTime(a.scheduled_time)}</span></td>
+            <td style="color:var(--muted);">${a.created_at ? a.created_at.slice(0, 10) : 'Today'}</td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) {
+      console.error('Error loading overview:', e);
+    }
+  }
+
+  async function deleteWorker(wid, name) {
+    if (!confirm(`Are you sure you want to delete worker "${name}"? This will remove all their active assignments.`)) {
+      return;
+    }
+    await J(`/api/manager/worker/${wid}`, 'DELETE');
+    loadOverview();
+  }
+
+  // View worker area from Stats panel — switches to Map panel and flies to area
+  function viewWorkerAreaOnMap(wid, colorIdx) {
+    switchPanel('map');
+    // After map initializes, select the worker
+    setTimeout(() => selectWorkerOnMap(wid, colorIdx), 600);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // PANEL 2: ASSIGN (Drawing Map & Resident Count)
+  // ══════════════════════════════════════════════════════════
+  function initAssignMap() {
+    if (assignMap) {
+      setTimeout(() => assignMap.invalidateSize(), 150);
+      // Re-add draw control if somehow lost
+      if (!assignDrawControl) {
+        _attachDrawControl();
+      }
+      return;
+    }
+
+    assignMap = L.map('assignMapContainer').setView([12.9352, 77.5350], 14);
+    L.tileLayer(DARK_TILES, TILE_OPTS).addTo(assignMap);
+
+    assignDrawnItems = new L.FeatureGroup();
+    assignMap.addLayer(assignDrawnItems);
+
+    _attachDrawControl();
+  }
+
+  function _attachDrawControl() {
+    if (!assignMap) return;
+    if (assignDrawControl) {
+      try { assignMap.removeControl(assignDrawControl); } catch(e) {}
+    }
+    assignDrawControl = new L.Control.Draw({
+      position: 'topleft',
+      draw: {
+        polyline: false,
+        marker: false,
+        circlemarker: false,
+        polygon: {
+          allowIntersection: false,
+          showArea: true,
+          shapeOptions: {
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.3,
+            weight: 3
+          }
+        },
+        rectangle: {
+          shapeOptions: {
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.3,
+            weight: 3
+          }
+        },
+        circle: {
+          shapeOptions: {
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.3,
+            weight: 3
+          }
+        }
+      },
+      edit: {
+        featureGroup: assignDrawnItems,
+        remove: true
+      }
+    });
+    assignMap.addControl(assignDrawControl);
+
+    // Remove old listener first, then re-add
+    assignMap.off(L.Draw.Event.CREATED);
+    assignMap.on(L.Draw.Event.CREATED, function (e) {
+      const type = e.layerType;
+      const layer = e.layer;
+      assignDrawnItems.clearLayers();
+      assignDrawnItems.addLayer(layer);
+
+      let coords = [];
+      if (type === 'circle') {
+        const center = layer.getLatLng();
+        const radius = layer.getRadius();
+        for (let i = 0; i < 64; i++) {
+          const angle = (i * 2 * Math.PI) / 64;
+          const lat = center.lat + (radius * Math.sin(angle)) / 111320;
+          const lon = center.lng + (radius * Math.cos(angle)) / (111320 * Math.cos(center.lat * Math.PI / 180));
+          coords.push([lat, lon]);
+        }
+      } else if (type === 'rectangle' || type === 'polygon') {
+        const lls = layer.getLatLngs()[0];
+        coords = lls.map(ll => [ll.lat, ll.lng]);
+      }
+
+      drawnPolygon = coords;
+      evaluateResidentsInDrawnArea(coords);
+
+      const el = document.getElementById('assignResidentCount');
+      if (el && coords.length >= 3) {
+        el.style.color = '#fbbf24';
+        el.textContent = `Boundary drawn: ${coords.length} points. Counting residents...`;
+      }
+    });
+
+    // Handle delete
+    assignMap.off(L.Draw.Event.DELETED);
+    assignMap.on(L.Draw.Event.DELETED, function() {
+      drawnPolygon = null;
+      const el = document.getElementById('assignResidentCount');
+      if (el) { el.textContent = 'Draw an area on the map to count residents'; el.style.color = ''; }
+    });
+  }
+
+  async function loadAssignPanelData() {
+    const [workers, assignments, residents] = await Promise.all([
+      J('/api/manager/workers'),
+      J('/api/manager/assignments'),
+      J('/api/residents')
+    ]);
+
+    allWorkers = workers || [];
+    allAssignments = assignments || [];
+    allResidents = residents || [];
+
+    // Populate worker dropdown
+    const select = document.getElementById('assignWorkerSelect');
+    select.innerHTML = '<option value="">— Select Worker —</option>' +
+      allWorkers.map(w => `<option value="${w.id}">${escHtml(w.name)} (${escHtml(w.vehicle || 'No vehicle')})</option>`).join('');
+
+    // Plot resident pins as small blue dots
+    if (assignMap) {
+      if (assignResidentLayer) assignMap.removeLayer(assignResidentLayer);
+      const grp = L.layerGroup();
+      allResidents.forEach(r => {
+        L.circleMarker([r.lat, r.lon], {
+          radius: 5,
+          color: '#3b82f6',
+          fillColor: '#3b82f6',
+          fillOpacity: 0.85,
+          weight: 1.5
+        }).addTo(grp).bindPopup(`<b>${escHtml(r.name)}</b><br>Slots: ${(r.slots || []).join(', ')}h`);
+      });
+      assignResidentLayer = grp.addTo(assignMap);
+    }
+
+    // Populate all assignments table
+    renderAllAssignmentsTable();
+  }
+
+  function evaluateResidentsInDrawnArea(polygon) {
+    let count = 0;
+    allResidents.forEach(r => {
+      if (pointInPolygon([r.lat, r.lon], polygon)) count++;
+    });
+    const el = document.getElementById('assignResidentCount');
+    if (el) {
+      el.textContent = `${count} residents found in this area`;
+      el.style.color = count > 0 ? '#4ade80' : '#fbbf24';
+    }
+  }
+
+  async function submitAssignment() {
+    const wid = document.getElementById('assignWorkerSelect').value;
+    const area = document.getElementById('assignAreaName').value.trim();
+    const driver = document.getElementById('assignDriverName').value.trim();
+    const vehicle = document.getElementById('assignVehicle').value.trim();
+    const time = document.getElementById('assignScheduledTime').value;
+    const statusMsg = document.getElementById('assignStatusMsg');
+
+    if (!wid) { alert('Please select a worker.'); return; }
+    if (!area) { alert('Please provide an area name.'); return; }
+
+    statusMsg.textContent = '⏳ Creating assignment...';
+    statusMsg.style.color = 'var(--muted)';
+
+    const payload = {
+      worker_id: wid,
+      area_name: area,
+      driver_name: driver,
+      vehicle: vehicle,
+      scheduled_time: time,
+      polygon: drawnPolygon
+    };
+
+    const res = await J('/api/manager/assign', 'POST', payload);
+    if (res && res.ok) {
+      statusMsg.textContent = '✅ Assignment created successfully!';
+      statusMsg.style.color = '#4ade80';
+      document.getElementById('assignAreaName').value = '';
+      document.getElementById('assignDriverName').value = '';
+      document.getElementById('assignVehicle').value = '';
+      drawnPolygon = null;
+      if (assignDrawnItems) assignDrawnItems.clearLayers();
+      document.getElementById('assignResidentCount').textContent = 'Draw an area on the map to count residents';
+
+      allAssignments = await J('/api/manager/assignments');
+      renderAllAssignmentsTable();
+    } else {
+      statusMsg.textContent = '❌ Failed to create assignment.';
+      statusMsg.style.color = '#f87171';
+    }
+  }
+
+  function renderAllAssignmentsTable() {
+    const tb = document.getElementById('allAssignmentsTableBody');
+    if (!allAssignments.length) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">No assignments recorded yet.</td></tr>';
+      return;
+    }
+    tb.innerHTML = allAssignments.map(a => {
+      const poly = parsePoly(a.polygon);
+      return `
+        <tr>
+          <td><strong>${escHtml(a.worker_name || a.worker_id)}</strong></td>
+          <td>${escHtml(a.area_name)}</td>
+          <td>${escHtml(a.driver_name || '—')}</td>
+          <td>${escHtml(a.vehicle || a.worker_vehicle || '—')}</td>
+          <td><span class="badge badge-blue">${fmtTime(a.scheduled_time)}</span></td>
+          <td>
+            ${poly ? `<span class="badge badge-green">✓ ${poly.length} Points</span>` : '<span class="badge badge-gray">No Polygon</span>'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // PANEL 3: COVERAGE MAP
+  // ══════════════════════════════════════════════════════════
+  function initCoverageMap() {
+    if (coverageMap) {
+      setTimeout(() => coverageMap.invalidateSize(), 150);
+      return;
+    }
+    coverageMap = L.map('coverageMap').setView([12.9352, 77.5350], 13);
+    L.tileLayer(DARK_TILES, TILE_OPTS).addTo(coverageMap);
+  }
+
+  // Compute what % of polygon area's residents have been visited by worker GPS
+  function computePolygonCoveragePercent(poly, coveragePoints) {
+    if (!poly || !poly.length) return 0;
+    const resInPoly = allResidents.filter(r => pointInPolygon([r.lat, r.lon], poly));
+    if (!resInPoly.length) return 0;
+    let visited = 0;
+    resInPoly.forEach(r => {
+      for (const pt of coveragePoints) {
+        const d = Math.sqrt(Math.pow((r.lat - pt.lat) * 111320, 2) + Math.pow((r.lon - pt.lon) * 111320, 2));
+        if (d <= 50) { visited++; break; }
+      }
+    });
+    return Math.round((visited / resInPoly.length) * 100);
+  }
+
+  async function refreshCoverageMap() {
+    if (!coverageMap) return;
+
+    const [workers, coverage, assignments, residents, liveGps] = await Promise.all([
+      J('/api/manager/workers'),
+      J('/api/manager/coverage'),
+      J('/api/manager/assignments'),
+      J('/api/residents'),
+      J('/api/worker/gps_all')
+    ]);
+
+    allWorkers = workers || [];
+    allAssignments = assignments || [];
+    allResidents = residents || [];
+
+    const coveragePoints = coverage || [];
+
+    // Clear existing layers
+    if (covResidentLayer) coverageMap.removeLayer(covResidentLayer);
+    if (covWorkerTrailLayer) coverageMap.removeLayer(covWorkerTrailLayer);
+    if (covPolygonLayer) coverageMap.removeLayer(covPolygonLayer);
+    if (covTruckMarkerLayer) coverageMap.removeLayer(covTruckMarkerLayer);
+
+    // 1. Draw Assigned Area Polygons — RED initially, fades to GREEN as coverage grows
+    covPolygonLayer = L.featureGroup();
+    allAssignments.forEach(a => {
+      const poly = parsePoly(a.polygon);
+      if (!poly) return;
+
+      const pct = computePolygonCoveragePercent(poly, coveragePoints);
+      // Interpolate: 0%=red, 50%=amber, 100%=green
+      let fillColor, borderColor;
+      if (pct >= 80) { fillColor = '#22c55e'; borderColor = '#16a34a'; }
+      else if (pct >= 40) { fillColor = '#f59e0b'; borderColor = '#d97706'; }
+      else { fillColor = '#ef4444'; borderColor = '#b91c1c'; }
+
+      const polyLayer = L.polygon(poly, {
+        color: borderColor,
+        fillColor: fillColor,
+        fillOpacity: 0.22,
+        weight: 2.5
+      }).addTo(covPolygonLayer);
+
+      const workerName = a.worker_name || a.worker_id || 'Unknown';
+      const statusBar = `<div style="background:${fillColor};border-radius:4px;height:6px;width:${pct}%;margin:6px 0;"></div>`;
+      polyLayer.bindPopup(`
+        <div style="font-family:'Inter',sans-serif;font-size:12px;min-width:200px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px;">🗺️ ${escHtml(a.area_name)}</div>
+          <div>👷 Worker: <strong>${escHtml(workerName)}</strong></div>
+          <div>⏰ Time: ${fmtTime(a.scheduled_time)}</div>
+          <div style="margin-top:6px;font-size:11px;color:#94a3b8;">Coverage Progress</div>
+          ${statusBar}
+          <div style="font-weight:700;color:${fillColor};">${pct}% covered</div>
+        </div>
+      `);
+    });
+    covPolygonLayer.addTo(coverageMap);
+
+    // 2. Draw Resident Pins — RED if uncovered, GREEN if worker GPS passed within 50m
+    covResidentLayer = L.layerGroup();
+    allResidents.forEach(r => {
+      // Visited if any coverage point is within 50m
+      let isVisited = false;
+      for (const pt of coveragePoints) {
+        const d = Math.sqrt(Math.pow((r.lat - pt.lat) * 111320, 2) + Math.pow((r.lon - pt.lon) * 111320, 2));
+        if (d <= 50) { isVisited = true; break; }
+      }
+
+      let assignedWorker = 'Unassigned';
+      for (const a of allAssignments) {
+        const poly = parsePoly(a.polygon);
+        if (poly && pointInPolygon([r.lat, r.lon], poly)) {
+          assignedWorker = a.worker_name || a.worker_id || 'Assigned';
+          break;
+        }
+      }
+
+      const gmapsLink = `https://www.google.com/maps?q=${r.lat},${r.lon}`;
+      const dotColor = isVisited ? '#22c55e' : '#ef4444';
+      const dotLabel = isVisited ? '✅ Collected today' : '🔴 Not yet visited';
+
+      L.circleMarker([r.lat, r.lon], {
+        radius: 8,
+        color: isVisited ? '#15803d' : '#ffffff',
+        fillColor: dotColor,
+        fillOpacity: 0.85,
+        weight: 1.5
+      }).addTo(covResidentLayer).bindPopup(`
+        <div style="font-family:'Inter',sans-serif;font-size:12px;min-width:180px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px;">👤 ${escHtml(r.name)}</div>
+          <div style="margin-bottom:4px;">${dotLabel}</div>
+          <div style="color:#94a3b8;">Preferred: ${(r.slots || []).join(', ')}h</div>
+          <div style="margin-top:6px;"><a href="${gmapsLink}" target="_blank" style="color:#60a5fa;text-decoration:underline;">🗺️ Google Maps</a></div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Assigned: <strong style="color:#4ade80;">${escHtml(assignedWorker)}</strong></div>
+        </div>
+      `);
+    });
+    covResidentLayer.addTo(coverageMap);
+
+    // 3. Draw Worker GPS Trail in worker color + green coverage dots
+    covWorkerTrailLayer = L.layerGroup();
+    coveragePoints.forEach(p => {
+      L.circleMarker([p.lat, p.lon], {
+        radius: 9,
+        color: 'transparent',
+        fillColor: '#22c55e',
+        fillOpacity: 0.25
+      }).addTo(covWorkerTrailLayer);
+    });
+
+    // Live worker GPS trails (colored polylines per worker)
+    if (liveGps && typeof liveGps === 'object') {
+      Object.entries(liveGps).forEach(([wid, info], idx) => {
+        if (info.trail && info.trail.length >= 2) {
+          const color = WORKER_COLORS[idx % WORKER_COLORS.length];
+          L.polyline(info.trail, {
+            color: color,
+            weight: 4,
+            opacity: 0.85,
+            className: 'animated-route-path'
+          }).addTo(covWorkerTrailLayer);
+        }
+      });
+    }
+    covWorkerTrailLayer.addTo(coverageMap);
+
+    // 4. Live Worker Truck Markers (blue glowing)
+    covTruckMarkerLayer = L.layerGroup();
+    allWorkers.filter(w => w.online && w.live_lat && w.live_lon).forEach((w, idx) => {
+      const color = WORKER_COLORS[idx % WORKER_COLORS.length];
+      const truckIcon = L.divIcon({
+        html: `<div style="background:${color};color:#000;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid #fff;box-shadow:0 0 16px ${color}, 0 2px 8px rgba(0,0,0,0.6);">🚛</div>`,
+        className: '',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+      L.marker([w.live_lat, w.live_lon], { icon: truckIcon, zIndexOffset: 2000 })
+        .addTo(covTruckMarkerLayer)
+        .bindPopup(`<b>🚛 ${escHtml(w.name)}</b><br>${escHtml(w.vehicle || 'Field Unit')}<br>Sector: ${escHtml(w.assigned_area || 'Unassigned')}`);
+    });
+    covTruckMarkerLayer.addTo(coverageMap);
+
+    // 5. Sidebar worker list with coverage %
+    const sidebar = document.getElementById('mapWorkerSidebarList');
+    if (!allWorkers.length) {
+      sidebar.innerHTML = '<p style="color:var(--muted);font-size:12px;">No workers registered.</p>';
+    } else {
+      sidebar.innerHTML = allWorkers.map((w, idx) => {
+        const color = WORKER_COLORS[idx % WORKER_COLORS.length];
+        const asgn = allAssignments.find(a => a.worker_id === w.id);
+        const poly = asgn ? parsePoly(asgn.polygon) : null;
+        const pct = poly ? computePolygonCoveragePercent(poly, coveragePoints) : null;
+        const coverageStr = pct !== null ? `${pct}% covered` : 'No area';
+        const pctColor = pct >= 80 ? '#4ade80' : pct >= 40 ? '#fbbf24' : '#f87171';
+        const onlineTitle = w.online
+          ? 'GPS is active — worker phone is streaming location'
+          : 'GPS is off — worker must tap \"Start GPS\" on their phone to go live';
+        return `
+          <div class="worker-row-card" onclick="selectWorkerOnMap('${w.id}', ${idx})" id="sidebarWorker-${w.id}" style="cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="online-dot ${w.online ? 'online' : 'offline'}" title="${onlineTitle}"></span>
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};"></span>
+              <div>
+                <div style="font-weight:700;font-size:12px;">${escHtml(w.name)}</div>
+                <div style="font-size:11px;color:${pctColor};font-weight:600;">${coverageStr}</div>
+              </div>
+            </div>
+            <span class="badge ${w.online ? 'badge-green' : 'badge-gray'}" title="${onlineTitle}">${w.online ? '● LIVE' : '○ OFF'}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    updateRefreshTime();
+  }
+
+  function selectWorkerOnMap(wid, colorIdx) {
+    document.querySelectorAll('.worker-row-card').forEach(c => c.classList.remove('active-sidebar'));
+    const row = document.getElementById(`sidebarWorker-${wid}`);
+    if (row) row.classList.add('active-sidebar');
+
+    const worker = allWorkers.find(w => w.id === wid);
+    const assignment = allAssignments.find(a => a.worker_id === wid);
+
+    // Remove previous worker highlight
+    if (selectedWorkerHighlight) {
+      coverageMap.removeLayer(selectedWorkerHighlight);
+      selectedWorkerHighlight = null;
+    }
+
+    const poly = assignment ? parsePoly(assignment.polygon) : null;
+    if (poly) {
+      // Highlight worker polygon with bright pulsing border
+      const color = WORKER_COLORS[colorIdx % WORKER_COLORS.length];
+      selectedWorkerHighlight = L.polygon(poly, {
+        color: color,
+        weight: 5,
+        fillColor: color,
+        fillOpacity: 0.2,
+        dashArray: '6, 4'
+      }).addTo(coverageMap);
+
+      coverageMap.flyToBounds(selectedWorkerHighlight.getBounds().pad(0.25), { animate: true, duration: 1.0 });
+
+      // Show tooltip with name
+      selectedWorkerHighlight.bindTooltip(`<b>${escHtml(worker ? worker.name : wid)}</b><br>${escHtml(assignment.area_name || '')}`, {
+        permanent: true, direction: 'center', className: 'leaflet-tooltip'
+      }).openTooltip();
+    } else if (worker && worker.live_lat && worker.live_lon) {
+      coverageMap.flyTo([worker.live_lat, worker.live_lon], 16, { animate: true, duration: 1.0 });
+    } else {
+      // No polygon and no live GPS — show alert
+      const areaName = worker ? worker.assigned_area : null;
+      if (areaName) {
+        const el = document.getElementById('mapWorkerSidebarList');
+        // Brief flash notification
+        const note = document.createElement('div');
+        note.style.cssText = 'background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 12px;font-size:12px;color:#f87171;margin-top:8px;';
+        note.textContent = `⚠️ No map polygon for "${areaName}" yet.`;
+        el.parentElement.appendChild(note);
+        setTimeout(() => note.remove(), 3000);
+      }
+    }
+  }
+
+  async function confirmResetCoverage() {
+    if (!confirm("Are you sure you want to reset all today's GPS coverage? This action cannot be undone.")) return;
+    await J('/api/manager/coverage/reset', 'POST');
+    refreshCoverageMap();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // PANEL 4: TIME ANALYSIS
+  // ══════════════════════════════════════════════════════════
+  function initTimeMap() {
+    if (timeMap) {
+      setTimeout(() => timeMap.invalidateSize(), 150);
+      return;
+    }
+
+    timeMap = L.map('timeMapContainer').setView([lastTimeCoords.lat, lastTimeCoords.lon], 13);
+    L.tileLayer(DARK_TILES, TILE_OPTS).addTo(timeMap);
+
+    timeMap.on('click', function (e) {
+      lastTimeCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
+      runLocationTimeAnalysis(lastTimeCoords.lat, lastTimeCoords.lon);
+    });
+  }
+
+  function updateRadius(val) {
+    document.getElementById('radiusValDisplay').textContent = `${val}m (${(val / 1000).toFixed(1)} km)`;
+    if (timeCircleLayer && timeMap) {
+      timeCircleLayer.setRadius(Number(val));
+    }
+    runLocationTimeAnalysis(lastTimeCoords.lat, lastTimeCoords.lon);
+  }
+
+  function useMyLocationForAnalysis() {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        lastTimeCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        if (timeMap) timeMap.setView([lastTimeCoords.lat, lastTimeCoords.lon], 14);
+        runLocationTimeAnalysis(lastTimeCoords.lat, lastTimeCoords.lon);
+      },
+      err => alert('Unable to retrieve your location: ' + err.message)
+    );
+  }
+
+  async function loadTimeAnalysisMap() {
+    allResidents = await J('/api/residents');
+
+    if (timeMap) {
+      // Plot residents colored by preferred time slot (gradient from early=green to late=red)
+      if (timeResidentLayer) timeMap.removeLayer(timeResidentLayer);
+      const grp = L.layerGroup();
+      allResidents.forEach(r => {
+        const slot = (r.slots && r.slots.length) ? r.slots[0] : 7;
+        let color = '#22c55e'; // 5-7am early green
+        if (slot >= 8 && slot <= 10) color = '#84cc16'; // 8-10am lime
+        else if (slot >= 11 && slot <= 14) color = '#f59e0b'; // mid day amber
+        else if (slot >= 15 && slot <= 18) color = '#f97316'; // afternoon orange
+        else if (slot >= 19) color = '#ef4444'; // evening red
+
+        L.circleMarker([r.lat, r.lon], {
+          radius: 7,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.75,
+          weight: 2
+        }).addTo(grp).bindPopup(`<b>${escHtml(r.name)}</b><br>Preferred Slot: <strong>${slot}:00</strong>`);
+      });
+      timeResidentLayer = grp.addTo(timeMap);
+    }
+
+    runLocationTimeAnalysis(lastTimeCoords.lat, lastTimeCoords.lon);
+  }
+
+  async function runLocationTimeAnalysis(lat, lon) {
+    const radius = Number(document.getElementById('timeRadiusSlider').value || 2000);
+
+    // Draw/Update Circle on map
+    if (timeMap) {
+      if (timeCircleLayer) timeMap.removeLayer(timeCircleLayer);
+      timeCircleLayer = L.circle([lat, lon], {
+        radius: radius,
+        color: '#3b82f6',
+        fillColor: '#3b82f6',
+        fillOpacity: 0.14,
+        weight: 2
+      }).addTo(timeMap);
+    }
+
+    const data = await J(`/api/manager/time_analysis?lat=${lat}&lon=${lon}&radius=${radius}`);
+    renderTimeAnalysisResult(data);
+  }
+
+  function renderTimeAnalysisResult(data) {
+    const recDisplay = document.getElementById('timeRecDisplay');
+    const subDisplay = document.getElementById('timeSubDisplay');
+    const totalDisplay = document.getElementById('timeTotalDisplay');
+    const chartEl = document.getElementById('timeBarChart');
+
+    if (!data || !data.total) {
+      recDisplay.textContent = '—';
+      subDisplay.textContent = 'No resident preferences found in this radius';
+      totalDisplay.textContent = 'Total Responses: 0';
+      chartEl.innerHTML = '<p style="color:var(--muted);font-size:12px;margin:auto;">No preferences collected in this zone.</p>';
+      return;
+    }
+
+    recDisplay.textContent = fmtTime(data.best_time);
+    subDisplay.innerHTML = `<strong style="color:#60a5fa;">${data.best_count}</strong> residents prefer this window`;
+    totalDisplay.textContent = `Total Responses in Radius: ${data.total}`;
+
+    // Render 30-min Bar Chart
+    const dist = data.distribution || {};
+    const slots = Object.keys(dist).sort();
+    const maxVal = Math.max(1, ...Object.values(dist));
+
+    chartEl.innerHTML = slots.map(slot => {
+      const count = dist[slot];
+      const pct = Math.max(8, Math.round((count / maxVal) * 100));
+      const isBest = slot === data.best_time;
+      return `
+        <div class="time-col">
+          <div class="t-bar ${isBest ? 'best' : ''}" style="height:${pct}%;">
+            <div class="t-bar-count">${count}</div>
+          </div>
+          <div class="t-bar-label">${fmtTime(slot)}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // PANEL 5: BLACKSPOTS (3-Column Layout with Maximize)
+  // ══════════════════════════════════════════════════════════
+  async function loadBlackspotsPanel() {
+    const [blackspots, cleaned, workers] = await Promise.all([
+      J('/api/manager/blackspots'),
+      J('/api/manager/cleaned'),
+      J('/api/manager/workers')
+    ]);
+
+    allBlackspots = blackspots || [];
+    allCleaned = cleaned || [];
+    allWorkers = workers || [];
+
+    // Populate worker dropdown in Dispatch modal
+    const dispatchSelect = document.getElementById('dispatchWorkerSelect');
+    dispatchSelect.innerHTML = '<option value="">— Select Worker —</option>' +
+      allWorkers.map(w => `<option value="${w.id}">${escHtml(w.name)} (${escHtml(w.vehicle || 'No vehicle')})</option>`).join('');
+
+    // Column 1: User Reports
+    document.getElementById('badgeCol1').textContent = allBlackspots.length;
+    const col1 = document.getElementById('listUserBlackspots');
+    if (!allBlackspots.length) {
+      col1.innerHTML = '<p style="color:var(--muted);font-size:12px;">No blackspot reports submitted.</p>';
+    } else {
+      col1.innerHTML = allBlackspots.map(b => {
+        const wet = b.wet_pct || 0;
+        const dry = b.dry_pct || 0;
+        const thumb = b.image_path
+          ? `<img src="/uploads/${b.image_path}" class="blackspot-thumb" onclick="openBlackspotDetailModal(${b.id})" alt="Blackspot">`
+          : `<div class="blackspot-placeholder" onclick="openBlackspotDetailModal(${b.id})">🗑️</div>`;
+
+        return `
+          <div class="blackspot-card">
+            ${thumb}
+            <div class="blackspot-body">
+              <div style="font-weight:700;font-size:13px;color:var(--text);">${escHtml(b.description || 'Illegal Blackspot')}</div>
+              <div style="color:var(--muted);font-size:11px;margin-top:3px;">
+                📍 ${b.lat.toFixed(4)}, ${b.lon.toFixed(4)} &bull; ${b.created_at ? b.created_at.slice(0, 10) : ''}
+              </div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:6px;">
+                ${escHtml(b.waste_class || 'Mixed')} &bull; 🟢 ${wet}% wet / 🟡 ${dry}% dry
+              </div>
+              <div class="waste-bar">
+                <div class="waste-bar-wet" style="width:${wet}%;"></div>
+                <div class="waste-bar-dry" style="width:${dry}%;"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                <button class="btn-sm btn-green" onclick="openDispatchModal(${b.id})">🚛 Dispatch</button>
+                <button class="btn-sm btn-red" onclick="deleteBlackspot(${b.id})" title="Delete Blackspot">🗑️</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Column 2: Worker Cleaned Proofs
+    document.getElementById('badgeCol2').textContent = allCleaned.length;
+    const col2 = document.getElementById('listWorkerCleaned');
+    if (!allCleaned.length) {
+      col2.innerHTML = '<p style="color:var(--muted);font-size:12px;">No cleaned proofs submitted yet.</p>';
+    } else {
+      col2.innerHTML = allCleaned.map(c => {
+        const thumb = c.image_path
+          ? `<a href="/uploads/${c.image_path}" target="_blank"><img src="/uploads/${c.image_path}" class="blackspot-thumb" alt="Cleaned Proof"></a>`
+          : `<div class="blackspot-placeholder" style="background:rgba(34,197,94,0.08);">✅</div>`;
+
+        return `
+          <div class="blackspot-card">
+            ${thumb}
+            <div class="blackspot-body">
+              <div style="font-weight:700;font-size:13px;color:#4ade80;">Cleaned by ${escHtml(c.worker_name || 'Field Crew')}</div>
+              <div style="color:var(--muted);font-size:11px;margin-top:2px;">📅 ${c.created_at ? c.created_at.slice(0, 16) : ''}</div>
+              ${c.notes ? `<div style="font-size:12px;color:var(--text);margin-top:6px;background:rgba(255,255,255,0.02);padding:6px;border-radius:6px;">${escHtml(c.notes)}</div>` : ''}
+              <div style="margin-top:8px;text-align:right;">
+                <button class="btn-sm btn-red" onclick="deleteCleanedProof(${c.id})">🗑️ Delete Proof</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Column 3: Assigned Blackspots
+    const assignedSpots = allBlackspots.filter(b => b.assigned_worker_id);
+    document.getElementById('badgeCol3').textContent = assignedSpots.length;
+    const col3 = document.getElementById('listAssignedBlackspots');
+    if (!assignedSpots.length) {
+      col3.innerHTML = '<p style="color:var(--muted);font-size:12px;">No spots currently assigned.</p>';
+    } else {
+      col3.innerHTML = assignedSpots.map(b => {
+        const thumb = b.image_path
+          ? `<img src="/uploads/${b.image_path}" style="width:100%;height:90px;object-fit:cover;cursor:pointer;" onclick="openBlackspotDetailModal(${b.id})" alt="Assigned spot">`
+          : '';
+
+        const urgencyColor = b.urgency === 'Critical' ? 'badge-red' : b.urgency === 'High' ? 'badge-amber' : 'badge-blue';
+        return `
+          <div class="blackspot-card">
+            ${thumb}
+            <div class="blackspot-body">
+              <div style="font-weight:700;font-size:13px;">${escHtml(b.description || 'Assigned Blackspot')}</div>
+              <div style="font-size:12px;color:#fbbf24;margin-top:4px;">👷 ${escHtml(b.worker_name || b.assigned_worker_id)}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                <span style="font-size:11px;color:var(--muted);">⏰ ${fmtTime(b.dispatch_time)}</span>
+                <span class="badge ${urgencyColor}">${escHtml(b.urgency || 'Normal')}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // Maximize Column Functionality
+  function toggleMaximize(colNum) {
+    const grid = document.getElementById('spotsContainer');
+    const currentClass = `maximized-col-${colNum}`;
+    const btn = event.currentTarget;
+
+    if (grid.classList.contains(currentClass)) {
+      grid.classList.remove(currentClass);
+      btn.textContent = '⤢';
+      btn.title = 'Maximize Column';
+    } else {
+      grid.classList.remove('maximized-col-1', 'maximized-col-2', 'maximized-col-3');
+      grid.classList.add(currentClass);
+      document.querySelectorAll('.btn-maximize').forEach(b => b.textContent = '⤢');
+      btn.textContent = '↙';
+      btn.title = 'Restore Layout';
+    }
+  }
+
+  let currentModalBsId = null;
+
+  function openBlackspotDetailModal(bsId) {
+    const spot = allBlackspots.find(b => b.id === bsId);
+    if (!spot) return;
+
+    currentModalBsId = bsId;
+    const modal = document.getElementById('blackspotDetailModal');
+
+    // Image
+    const imgContainer = document.getElementById('bsModalImageContainer');
+    if (spot.image_path) {
+      imgContainer.innerHTML = `<img src="/uploads/${spot.image_path}" style="width:100%;max-height:260px;object-fit:cover;border-radius:12px;border:1px solid var(--border);" alt="Full Image">`;
+    } else {
+      imgContainer.innerHTML = '<div style="height:120px;background:rgba(239,68,68,0.08);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:44px;">🗑️</div>';
+    }
+
+    document.getElementById('bsModalLoc').innerHTML = `${spot.lat.toFixed(5)}, ${spot.lon.toFixed(5)} &bull; <a href="https://www.google.com/maps?q=${spot.lat},${spot.lon}" target="_blank" style="color:#60a5fa;text-decoration:underline;">Google Maps</a>`;
+    document.getElementById('bsModalDate').textContent = spot.created_at || 'Recent';
+    document.getElementById('bsModalDesc').textContent = spot.description || 'No description provided.';
+    document.getElementById('bsModalClass').textContent = spot.waste_class || 'Mixed';
+
+    const wet = spot.wet_pct || 0;
+    const dry = spot.dry_pct || 0;
+    document.getElementById('bsModalWetBar').style.width = `${wet}%`;
+    document.getElementById('bsModalDryBar').style.width = `${dry}%`;
+    document.getElementById('bsModalWetPct').textContent = `🟢 Wet: ${wet}%`;
+    document.getElementById('bsModalDryPct').textContent = `🟡 Dry: ${dry}%`;
+
+    // Assignment status
+    if (spot.assigned_worker_id) {
+      document.getElementById('bsModalTruckAssigned').innerHTML = `<span style="color:#4ade80;">Yes &bull; ${escHtml(spot.worker_name || spot.assigned_worker_id)}</span>`;
+      document.getElementById('bsModalDispatchInfo').innerHTML = `Scheduled: <strong>${fmtTime(spot.dispatch_time)}</strong> &bull; Urgency: <strong>${spot.urgency || 'Normal'}</strong>`;
+    } else {
+      document.getElementById('bsModalTruckAssigned').innerHTML = '<span style="color:var(--muted);">No worker assigned</span>';
+      document.getElementById('bsModalDispatchInfo').innerHTML = '';
+    }
+
+    // Cleaned status
+    const cleanedMatch = allCleaned.find(c => c.blackspot_id === bsId);
+    const cleanedStatusEl = document.getElementById('bsModalCleanedStatus');
+    const cleanedDetailsEl = document.getElementById('bsModalCleanedDetails');
+
+    if (cleanedMatch) {
+      cleanedStatusEl.innerHTML = '<span style="color:#4ade80;font-weight:700;">✅ Cleaned</span>';
+      let proofImg = '';
+      if (cleanedMatch.image_path) {
+        proofImg = `
+          <div style="margin-top:8px;">
+            <a href="/uploads/${cleanedMatch.image_path}" target="_blank">
+              <img src="/uploads/${cleanedMatch.image_path}" style="width:120px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" alt="Proof">
+            </a>
+            <div style="margin-top:4px;"><a href="/uploads/${cleanedMatch.image_path}" target="_blank" style="color:#60a5fa;font-size:12px;text-decoration:underline;">View Cleaned Image</a></div>
+          </div>
+        `;
+      }
+      cleanedDetailsEl.innerHTML = `
+        <div style="font-size:12px;color:var(--muted);">
+          Cleaned by: <strong style="color:var(--text);">${escHtml(cleanedMatch.worker_name || 'Worker')}</strong> &bull; ${cleanedMatch.created_at ? cleanedMatch.created_at.slice(0, 16) : ''}
+          ${cleanedMatch.notes ? `<div style="margin-top:4px;color:var(--text);">${escHtml(cleanedMatch.notes)}</div>` : ''}
+          ${proofImg}
+        </div>
+      `;
+    } else {
+      cleanedStatusEl.innerHTML = '<span style="color:#f87171;font-weight:700;">❌ Not yet cleaned</span>';
+      cleanedDetailsEl.innerHTML = '';
+    }
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeBlackspotDetailModal() {
+    document.getElementById('blackspotDetailModal').classList.add('hidden');
+    currentModalBsId = null;
+  }
+
+  async function deleteBlackspotFromModal() {
+    if (!currentModalBsId) return;
+    if (!confirm('Are you sure you want to delete this blackspot report?')) return;
+    await J(`/api/manager/blackspot/${currentModalBsId}`, 'DELETE');
+    closeBlackspotDetailModal();
+    loadBlackspotsPanel();
+  }
+
+  async function deleteBlackspot(id) {
+    if (!confirm('Are you sure you want to delete this blackspot report?')) return;
+    await J(`/api/manager/blackspot/${id}`, 'DELETE');
+    loadBlackspotsPanel();
+  }
+
+  async function deleteCleanedProof(id) {
+    if (!confirm('Are you sure you want to delete this cleaned proof?')) return;
+    await J(`/api/manager/cleaned/${id}`, 'DELETE');
+    loadBlackspotsPanel();
+  }
+
+  // Dispatch Modal
+  function openDispatchModal(bsId) {
+    document.getElementById('dispatchSpotId').value = bsId;
+    document.getElementById('dispatchModal').classList.remove('hidden');
+  }
+
+  function closeDispatchModal() {
+    document.getElementById('dispatchModal').classList.add('hidden');
+  }
+
+  async function submitDispatch() {
+    const bsId = document.getElementById('dispatchSpotId').value;
+    const time = document.getElementById('dispatchTime').value;
+    const urgency = document.getElementById('dispatchUrgency').value;
+    const wid = document.getElementById('dispatchWorkerSelect').value;
+
+    await J(`/api/manager/blackspot/${bsId}/dispatch`, 'POST', {
+      dispatch_time: time,
+      urgency: urgency,
+      worker_id: wid
+    });
+
+    closeDispatchModal();
+    loadBlackspotsPanel();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // PANEL 6: ALERTS (Complaints)
+  // ══════════════════════════════════════════════════════════
+  async function loadComplaints() {
+    const complaints = await J('/api/manager/complaints');
+    const listContainer = document.getElementById('complaintsListContainer');
+
+    const pending = complaints.filter(c => c.verified_status === 'Pending').length;
+    const visited = complaints.filter(c => c.verified_status === 'Truck Visited').length;
+    const missed = complaints.filter(c => c.verified_status === 'Truck Did Not Visit').length;
+
+    document.getElementById('badgePendingCount').textContent = `${pending} Unverified`;
+    document.getElementById('badgeVisitedCount').textContent = `${visited} Truck Visited`;
+    document.getElementById('badgeMissedCount').textContent = `${missed} Missed`;
+
+    if (!complaints.length) {
+      listContainer.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:16px 0;">No missed-truck complaints filed.</p>';
+      return;
+    }
+
+    listContainer.innerHTML = complaints.map(c => {
+      const isVisited = c.verified_status === 'Truck Visited';
+      const isMissed = c.verified_status === 'Truck Did Not Visit';
+      const isPending = !isVisited && !isMissed;
+
+      const badgeClass = isVisited ? 'badge-green' : (isMissed ? 'badge-red' : 'badge-amber');
+      const verdictClass = isVisited ? 'visited' : (isMissed ? 'missed' : 'pending');
+      const icon = isVisited ? '✅' : (isMissed ? '❌' : '⏳');
+
+      return `
+        <div class="complaint-card">
+          <div class="c-header">
+            <div>
+              <span style="font-weight:700;font-size:14px;color:var(--text);">${escHtml(c.user_name || 'Resident')}</span>
+              <span style="color:var(--muted);font-size:12px;margin-left:8px;">📅 ${c.created_at ? c.created_at.slice(0, 16) : ''}</span>
+            </div>
+            <span class="badge ${badgeClass}">${escHtml(c.verified_status || 'Pending')}</span>
+          </div>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">
+            📍 ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)} &bull; 
+            <a href="https://www.google.com/maps?q=${c.lat},${c.lon}" target="_blank" style="color:#60a5fa;text-decoration:underline;">Open in Google Maps</a>
+          </div>
+
+          <div style="font-size:13px;color:var(--text);line-height:1.4;margin-bottom:10px;">
+            💬 "${escHtml(c.message || 'Truck missed collection at my address.')}"
+          </div>
+
+          ${c.verification_note ? `
+            <div class="c-verdict-box ${verdictClass}">
+              <span>${icon}</span>
+              <span><strong>Verification Audit:</strong> ${escHtml(c.verification_note)}</span>
+            </div>
+          ` : ''}
+
+          ${isPending ? `
+            <div style="margin-top:10px;text-align:right;">
+              <button class="btn-sm btn-blue" onclick="verifyAllComplaints()">⚡ Verify Now</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    updateRefreshTime();
+  }
+
+  async function verifyAllComplaints() {
+    await J('/api/manager/complaints/verify', 'POST');
+    loadComplaints();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // INITIALIZATION & AUTO-REFRESH
+  // ══════════════════════════════════════════════════════════
+  document.addEventListener('DOMContentLoaded', () => {
+    loadOverview();
+
+    // Auto-refresh interval (10s while active)
+    setInterval(() => {
+      if (activePanel === 'overview') {
+        loadOverview();
+      } else if (activePanel === 'map') {
+        refreshCoverageMap();
+      } else if (activePanel === 'spots') {
+        loadBlackspotsPanel();
+      } else if (activePanel === 'alerts') {
+        loadComplaints();
+      } else if (activePanel === 'assign') {
+        allAssignments = J('/api/manager/assignments').then(d => { allAssignments = d; renderAllAssignmentsTable(); });
+      }
+    }, 10000);
+  });
+</script>
+
+<script>
+  window.SW_CHATBOT_CONFIG = {
+    role: 'manager',
+    apiBase: '',
+  };
+</script>
+<script src="/static/chatbot.js"></script>
+</body>
+</html>

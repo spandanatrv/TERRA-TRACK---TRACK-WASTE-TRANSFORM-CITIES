@@ -1,0 +1,2064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartWaste — Resident Dashboard</title>
+  <meta name="description" content="Track your neighborhood waste collection truck in real time, report blackspots, file missed pickup complaints, and interact with the AI assistant.">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #07100a;
+      --surface: #0e1a10;
+      --card: #121c14;
+      --border: #1b2e1e;
+      --accent: #22c55e;
+      --accent-hover: #16a34a;
+      --text: #f0f7f1;
+      --muted: #6a8b6e;
+      --r: 16px;
+      --trail: #8b5cf6;
+      --route: #06b6d4;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --blue: #3b82f6;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Animated SVG Dash for Polylines ── */
+    @keyframes dashMove {
+      to { stroke-dashoffset: -25; }
+    }
+    .anim-dash-purple path {
+      stroke-dasharray: 8, 8 !important;
+      animation: dashMove 1.2s linear infinite !important;
+    }
+    .anim-dash-cyan path {
+      stroke-dasharray: 8, 8 !important;
+      animation: dashMove 0.9s linear infinite !important;
+    }
+
+    /* ── Setup Overlay ── */
+    #setupOverlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(7, 16, 10, 0.96);
+      backdrop-filter: blur(10px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    #setupOverlay.hidden { display: none; }
+
+    .setup-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(34, 197, 94, 0.08);
+      border-radius: 24px;
+      padding: 36px;
+      max-width: 520px;
+      width: 100%;
+      position: relative;
+    }
+
+    .setup-step { display: none; }
+    .setup-step.active { display: block; animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .step-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(34, 197, 94, 0.15); color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 4px 12px; border-radius: 99px;
+      margin-bottom: 16px;
+    }
+
+    .setup-card h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 26px; font-weight: 700; margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    .setup-card p {
+      color: var(--muted); font-size: 13.5px; margin-bottom: 22px; line-height: 1.5;
+    }
+
+    .field-label {
+      font-size: 12.5px; font-weight: 600; margin-bottom: 7px; color: #9cbfa1;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .field-input, .field-textarea, .field-select {
+      width: 100%; background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border); border-radius: 12px;
+      color: var(--text); font-family: inherit; font-size: 14px;
+      padding: 12px 14px; outline: none; transition: border-color 0.2s, background 0.2s;
+    }
+    .field-input:focus, .field-textarea:focus, .field-select:focus {
+      border-color: var(--accent); background: rgba(34, 197, 94, 0.04);
+    }
+    .field-textarea { resize: vertical; min-height: 72px; }
+    .field-group { margin-bottom: 18px; }
+
+    #setupMapPicker {
+      width: 100%; height: 230px; border-radius: 14px;
+      border: 1px solid var(--border); margin-bottom: 10px; overflow: hidden;
+      box-shadow: inset 0 0 12px rgba(0,0,0,0.4);
+    }
+
+    .loc-info {
+      font-size: 12px; color: var(--muted); text-align: center;
+      padding: 9px 12px; background: rgba(34, 197, 94, 0.06);
+      border-radius: 10px; border: 1px solid var(--border);
+    }
+
+    .btn-primary {
+      width: 100%; padding: 13px 20px; border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      color: #07100a; font-family: inherit; font-size: 14.5px;
+      font-weight: 700; border-radius: 12px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 4px 16px rgba(34, 197, 94, 0.25);
+    }
+    .btn-primary:hover { opacity: 0.93; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(34, 197, 94, 0.35); }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .btn-outline {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px 16px; border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03); color: var(--text); font-family: inherit;
+      font-size: 13px; font-weight: 600; border-radius: 10px;
+      cursor: pointer; transition: all 0.2s; text-decoration: none;
+    }
+    .btn-outline:hover { border-color: var(--accent); color: #4ade80; background: rgba(34, 197, 94, 0.08); }
+
+    .btn-danger-outline {
+      border-color: rgba(239, 68, 68, 0.3); color: #f87171; background: rgba(239, 68, 68, 0.05);
+    }
+    .btn-danger-outline:hover { border-color: var(--bad); color: #fca5a5; background: rgba(239, 68, 68, 0.12); }
+
+    .gps-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 10px 14px; background: rgba(34, 197, 94, 0.08);
+      border: 1px dashed var(--accent); border-radius: 10px;
+      color: #4ade80; font-size: 13px; font-weight: 600;
+      cursor: pointer; margin-bottom: 12px; transition: all 0.2s;
+    }
+    .gps-btn:hover { background: rgba(34, 197, 94, 0.18); transform: translateY(-1px); }
+
+    /* ── Time Picker Component ── */
+    .time-picker-box {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px; margin-bottom: 16px;
+    }
+    .preset-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+      margin-bottom: 14px;
+    }
+    .preset-chip {
+      padding: 8px 10px; font-size: 12px; font-weight: 500;
+      background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      transition: all 0.2s;
+    }
+    .preset-chip:hover { border-color: var(--accent); color: var(--text); background: rgba(34, 197, 94, 0.05); }
+    .preset-chip.active {
+      background: rgba(34, 197, 94, 0.15); border-color: var(--accent);
+      color: #4ade80; font-weight: 700;
+    }
+    .preset-time { font-family: 'Space Grotesk', sans-serif; font-size: 12.5px; }
+    .preset-tag { font-size: 10px; opacity: 0.85; text-transform: uppercase; }
+
+    .custom-time-row {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .custom-select-wrap { flex: 1; }
+    .ampm-toggle {
+      display: flex; background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    }
+    .ampm-btn {
+      padding: 10px 14px; background: transparent; border: none;
+      color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .ampm-btn.active {
+      background: var(--accent); color: #07100a;
+    }
+    .time-preview-text {
+      margin-top: 10px; font-size: 12px; color: var(--muted); text-align: center;
+      background: rgba(0,0,0,0.2); padding: 6px; border-radius: 8px;
+    }
+    .time-preview-highlight { color: #4ade80; font-weight: 700; }
+
+    /* ── Main App Layout ── */
+    #mainApp {
+      display: flex; height: 100vh; width: 100vw; overflow: hidden;
+    }
+    #mainApp.hidden { display: none; }
+
+    /* Sidebar (380px fixed) */
+    .sidebar {
+      width: 380px; min-width: 340px; flex-shrink: 0;
+      background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; height: 100%;
+      z-index: 10;
+    }
+
+    /* Sidebar Header */
+    .sidebar-header {
+      padding: 16px 20px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .brand-wrap { display: flex; align-items: center; gap: 10px; }
+    .brand-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(34,197,94,0.05));
+      border: 1px solid rgba(34,197,94,0.4);
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .brand-title {
+      font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 800;
+      color: var(--text); letter-spacing: -0.02em; line-height: 1.1;
+    }
+    .brand-user {
+      font-size: 11.5px; color: var(--muted); font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;
+    }
+    .header-right {
+      display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    }
+    .mode-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(34, 197, 94, 0.15); color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      font-size: 10.5px; font-weight: 800; padding: 3px 8px;
+      border-radius: 99px; text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .switch-link {
+      color: var(--muted); text-decoration: none; font-size: 11px;
+      display: inline-flex; align-items: center; gap: 4px;
+      transition: color 0.2s;
+    }
+    .switch-link:hover { color: var(--accent); }
+
+    /* GPS Bar */
+    .gps-bar {
+      padding: 10px 18px; background: rgba(0, 0, 0, 0.25);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 11px; border-radius: 99px; font-size: 11px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .status-live {
+      background: rgba(34, 197, 94, 0.14); color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .status-live .status-dot {
+      background: #22c55e; box-shadow: 0 0 8px #22c55e;
+      animation: pulseGlow 1.6s infinite ease-in-out;
+    }
+    .status-off {
+      background: rgba(239, 68, 68, 0.12); color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .status-off .status-dot { background: #ef4444; }
+
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.6; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.25); }
+    }
+
+    .notif-toggle-btn {
+      padding: 5px 11px; background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--muted); font-size: 11px; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; gap: 5px;
+      transition: all 0.2s;
+    }
+    .notif-toggle-btn:hover { border-color: var(--accent); color: var(--text); }
+    .notif-toggle-btn.granted {
+      background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.4);
+      color: #4ade80;
+    }
+
+    /* Assigned Area Bar */
+    .assigned-area-bar {
+      padding: 9px 18px;
+      background: linear-gradient(90deg, rgba(34, 197, 94, 0.08), rgba(245, 158, 11, 0.04));
+      border-bottom: 1px solid var(--border);
+      font-size: 12px; display: flex; align-items: center; gap: 8px;
+    }
+    .area-badge-icon { font-size: 14px; flex-shrink: 0; }
+    .area-text {
+      color: #d8ebd9; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .area-text.unassigned { color: var(--muted); font-weight: 500; font-style: italic; }
+
+    /* Nav Tabs */
+    .nav-tabs {
+      display: flex; padding: 8px 12px; gap: 4px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+    }
+    .nav-tab {
+      flex: 1; padding: 8px 2px; background: transparent;
+      border: 1px solid transparent; border-radius: 10px;
+      color: var(--muted); font-family: inherit; font-size: 11px;
+      font-weight: 600; cursor: pointer; transition: all 0.18s ease;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+    }
+    .nav-tab .tab-icon { font-size: 16px; }
+    .nav-tab:hover { border-color: rgba(34, 197, 94, 0.2); color: var(--text); }
+    .nav-tab.active {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.4);
+      color: #4ade80; font-weight: 700;
+    }
+
+    /* Tab Content Area */
+    .tab-content {
+      flex: 1; overflow-y: auto; padding: 18px;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: fadeIn 0.2s ease-out; }
+
+    /* Glassmorphic Info Cards */
+    .info-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 16px; margin-bottom: 14px;
+      position: relative; overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+    .info-card h3 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14.5px; font-weight: 700; margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      color: #e5f6e8;
+    }
+    .info-card h3 .card-header-left { display: flex; align-items: center; gap: 8px; }
+
+    /* Truck Status Card */
+    .status-metrics {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      margin-top: 10px;
+    }
+    .metric-box {
+      background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border);
+      border-radius: 10px; padding: 9px 8px; text-align: center;
+    }
+    .metric-val {
+      font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700;
+      color: var(--accent); margin-bottom: 2px;
+    }
+    .metric-lbl { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+    .route-desc-box {
+      font-size: 12.5px; color: var(--muted); line-height: 1.5;
+      background: rgba(6, 182, 212, 0.05); border: 1px solid rgba(6, 182, 212, 0.2);
+      border-radius: 10px; padding: 10px 12px; margin-top: 10px;
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .route-desc-box span { color: #38bdf8; font-weight: 600; }
+
+    /* Chat Tab */
+    .chat-window {
+      height: 300px; overflow-y: auto; border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px; display: flex;
+      flex-direction: column; gap: 10px; margin-bottom: 12px;
+      background: rgba(0, 0, 0, 0.3);
+    }
+    .chat-bubble {
+      max-width: 85%; font-size: 13px; line-height: 1.45;
+      padding: 10px 12px; border-radius: 14px;
+      word-break: break-word;
+    }
+    .chat-bubble.bot {
+      background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.25);
+      color: #e2f5e5; align-self: flex-start; border-bottom-left-radius: 4px;
+    }
+    .chat-bubble.user {
+      background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #dbeafe; align-self: flex-end; border-bottom-right-radius: 4px;
+    }
+    .chat-bubble .sender {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 3px;
+    }
+    .chat-bubble.thinking {
+      color: var(--muted); font-style: italic; display: flex; align-items: center; gap: 6px;
+    }
+
+    .chat-input-row { display: flex; gap: 8px; }
+    .chat-input {
+      flex: 1; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-family: inherit;
+      font-size: 13.5px; padding: 10px 12px; outline: none; transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: var(--accent); }
+    .btn-send {
+      padding: 0 16px; background: var(--accent); border: none; border-radius: 10px;
+      color: #07100a; font-size: 15px; font-weight: 700; cursor: pointer;
+      transition: opacity 0.2s; display: flex; align-items: center; justify-content: center;
+    }
+    .btn-send:hover { opacity: 0.85; }
+
+    /* Upload Tab */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 14px;
+      padding: 24px 16px; text-align: center; cursor: pointer;
+      transition: all 0.2s; margin-bottom: 14px; position: relative;
+      background: rgba(255, 255, 255, 0.01);
+    }
+    .upload-zone:hover {
+      border-color: var(--accent); background: rgba(34, 197, 94, 0.04);
+    }
+    .upload-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-zone-icon { font-size: 36px; margin-bottom: 6px; }
+    .upload-zone-text { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 4px; }
+    .upload-zone-sub { font-size: 11.5px; color: var(--muted); }
+
+    #uploadPreviewWrap {
+      display: none; margin-bottom: 14px; position: relative; border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--border); max-height: 180px;
+    }
+    #uploadPreview { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .clear-preview-btn {
+      position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.7);
+      color: #fff; border: none; border-radius: 50%; width: 24px; height: 24px;
+      font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+
+    .classification-result {
+      display: none; margin-top: 14px; padding: 12px;
+      background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 10px; font-size: 13px;
+    }
+    .classification-title { font-weight: 700; color: #4ade80; margin-bottom: 6px; }
+    .waste-bar-track {
+      height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.1);
+      overflow: hidden; display: flex; margin-top: 6px;
+    }
+    .waste-bar-wet { background: #22c55e; height: 100%; }
+    .waste-bar-dry { background: #3b82f6; height: 100%; }
+
+    /* Inform Tab / Complaints */
+    .complaint-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+      font-size: 12.5px;
+    }
+    .complaint-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .complaint-date { font-size: 11px; color: var(--muted); }
+    .complaint-msg { color: var(--text); margin-bottom: 8px; font-size: 13px; }
+    .verification-box {
+      background: rgba(0,0,0,0.25); border-radius: 8px; padding: 7px 10px;
+      font-size: 11.5px; color: #cbd5e1; border-left: 3px solid var(--muted);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .badge-green { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .badge-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-gray { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.25); }
+
+    /* Settings Tab */
+    .settings-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-label { color: var(--muted); }
+    .settings-val { font-weight: 600; color: #4ade80; }
+
+    /* Map Panel */
+    .map-wrap {
+      flex: 1; height: 100%; position: relative;
+    }
+    #mainMap {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+    }
+
+    /* Map Legend Overlay */
+    .map-legend {
+      position: absolute; bottom: 20px; left: 20px; z-index: 800;
+      background: rgba(7, 16, 10, 0.88); backdrop-filter: blur(8px);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 10px 14px; font-size: 11.5px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+    }
+    .leg-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .leg-item:last-child { margin-bottom: 0; }
+    .leg-line { width: 16px; height: 3px; border-radius: 2px; }
+
+    /* Notification Toast (Bottom-Right) */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+      background: #0f2414; border: 1px solid var(--accent);
+      border-radius: 14px; padding: 14px 18px; max-width: 350px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(34, 197, 94, 0.25);
+      transform: translateY(140%); opacity: 0;
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s;
+      pointer-events: none;
+    }
+    #toast.show {
+      transform: translateY(0); opacity: 1; pointer-events: auto;
+    }
+    .toast-title {
+      font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+      color: #4ade80; font-size: 14px; margin-bottom: 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .toast-body { font-size: 12.5px; color: #e2f5e5; line-height: 1.4; }
+
+    /* Truck marker styles */
+    .truck-icon-live {
+      display: flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(245, 158, 11, 0.3) 0%, rgba(245, 158, 11, 0.05) 70%);
+      border: 2px solid #f59e0b;
+      font-size: 26px;
+      animation: truckGlow 2s infinite ease-in-out;
+      filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.7));
+    }
+    @keyframes truckGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); transform: scale(1); }
+      50% { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0); transform: scale(1.08); }
+    }
+
+    .truck-icon-depot {
+      display: flex; align-items: center; justify-content: center;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(100, 116, 139, 0.25);
+      border: 1.5px dashed rgba(255, 255, 255, 0.4);
+      font-size: 22px; opacity: 0.5;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      body { height: auto; overflow: auto; }
+      #mainApp { flex-direction: column-reverse; height: auto; }
+      .sidebar { width: 100%; min-width: 0; height: auto; border-right: none; border-top: 1px solid var(--border); }
+      .map-wrap { height: 50vh; min-height: 320px; }
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+  <link rel="stylesheet" href="/static/chatbot.css">
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════
+     1. SETUP OVERLAY (First-time user onboarding)
+     ════════════════════════════════════════════════════════════ -->
+<div id="setupOverlay">
+  <div class="setup-card">
+
+    <!-- Step 1: Name + Leaflet Map Location -->
+    <div class="setup-step active" id="step1">
+      <span class="step-badge">🌱 Setup Step 1 of 2</span>
+      <h2>Welcome to SmartWaste 👋</h2>
+      <p>Set up your profile to receive live garbage truck tracking, arrival alerts, and personalized collection schedules.</p>
+
+      <div class="field-group">
+        <label class="field-label" for="setupName">Your Name / House Number</label>
+        <input id="setupName" class="field-input" placeholder="e.g. Maya Sharma — Flat 402" autocomplete="name">
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">
+          <span>Home Location Pin</span>
+          <span style="font-size:11px;color:var(--muted);font-weight:400;">Bangalore Center</span>
+        </label>
+        <button type="button" class="gps-btn" id="autoLocBtn" onclick="detectCurrentLocation()">
+          <span>📍</span> Use My Current Location
+        </button>
+        <div id="setupMapPicker"></div>
+        <div class="loc-info" id="locInfo">Click anywhere on the map or tap current location to drop your pin.</div>
+      </div>
+
+      <button type="button" class="btn-primary" onclick="proceedToStep2()">
+        Continue to Pickup Preference →
+      </button>
+    </div>
+
+    <!-- Step 2: Preferred Time (Custom AM/PM Picker) -->
+    <div class="setup-step" id="step2">
+      <span class="step-badge">⏰ Setup Step 2 of 2</span>
+      <h2>Preferred Pickup Time</h2>
+      <p>Select your preferred window for daily waste pickup. We optimize ward routes based on neighborhood consensus.</p>
+
+      <!-- Custom AM/PM Picker Component -->
+      <div class="field-group">
+        <label class="field-label">Quick Recommendations</label>
+        <div class="preset-grid" id="setupPresetGrid">
+          <!-- Populated by JS -->
+        </div>
+
+        <label class="field-label" style="margin-top:14px;">Custom Time Selector</label>
+        <div class="time-picker-box">
+          <div class="custom-time-row">
+            <div class="custom-select-wrap">
+              <select id="setupHourSelect" class="field-select" onchange="onCustomTimeChange('setup')">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7" selected>7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+                <option value="11">11</option>
+                <option value="12">12</option>
+              </select>
+            </div>
+            <div style="font-size:18px;font-weight:700;color:var(--muted);">:</div>
+            <div class="custom-select-wrap">
+              <select id="setupMinuteSelect" class="field-select" onchange="onCustomTimeChange('setup')">
+                <option value="00" selected>00</option>
+                <option value="15">15</option>
+                <option value="30">30</option>
+                <option value="45">45</option>
+              </select>
+            </div>
+            <div class="ampm-toggle">
+              <button type="button" class="ampm-btn active" id="setupAmBtn" onclick="setAmPm('setup', 'AM')">AM</button>
+              <button type="button" class="ampm-btn" id="setupPmBtn" onclick="setAmPm('setup', 'PM')">PM</button>
+            </div>
+          </div>
+          <div class="time-preview-text" id="setupTimePreview">
+            Selected: <span class="time-preview-highlight">7:00 AM — Morning (07:00)</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button type="button" class="btn-outline" style="flex:0.35;" onclick="backToStep1()">← Back</button>
+        <button type="button" class="btn-primary" style="flex:1;" onclick="registerUser()">🎉 Complete Registration</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     2. MAIN APP (Shown after registration)
+     ════════════════════════════════════════════════════════════ -->
+<div id="mainApp" class="hidden">
+
+  <!-- LEFT SIDEBAR (380px) -->
+  <aside class="sidebar">
+
+    <!-- Header -->
+    <div class="sidebar-header">
+      <div class="brand-wrap">
+        <div class="brand-logo">🚛</div>
+        <div>
+          <div class="brand-title">SmartWaste</div>
+          <div class="brand-user" id="headerUserName">Resident Portal</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span class="mode-pill">USER</span>
+        <a href="/" class="switch-link">← Switch Mode</a>
+      </div>
+    </div>
+
+    <!-- GPS Bar -->
+    <div class="gps-bar">
+      <div id="truckGpsPill" class="status-pill status-off">
+        <span class="status-dot"></span>
+        <span id="truckGpsText">GPS DISCONNECTED</span>
+      </div>
+      <button type="button" id="notifPermBtn" class="notif-toggle-btn" onclick="toggleNotificationPermission()">
+        🔔 <span id="notifPermBtnText">Notifications</span>
+      </button>
+    </div>
+
+    <!-- Assigned Area Bar -->
+    <div class="assigned-area-bar" id="assignedAreaBar">
+      <span class="area-badge-icon">📍</span>
+      <div class="area-text" id="assignedAreaText">Checking area assignment...</div>
+    </div>
+
+    <!-- 5 Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button type="button" class="nav-tab active" id="tabBtn-map" onclick="switchNavTab('map')">
+        <span class="tab-icon">🗺️</span>
+        <span>Map</span>
+      </button>
+      <button type="button" class="nav-tab" id="tabBtn-chat" onclick="switchNavTab('chat')">
+        <span class="tab-icon">🤖</span>
+        <span>Chat</span>
+      </button>
+      <button type="button" class="nav-tab" id="tabBtn-upload" onclick="switchNavTab('upload')">
+        <span class="tab-icon">📸</span>
+        <span>Upload</span>
+      </button>
+      <button type="button" class="nav-tab" id="tabBtn-inform" onclick="switchNavTab('inform')">
+        <span class="tab-icon">📢</span>
+        <span>Inform</span>
+      </button>
+      <button type="button" class="nav-tab" id="tabBtn-settings" onclick="switchNavTab('settings')">
+        <span class="tab-icon">⚙️</span>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <!-- Tab Panels Container -->
+    <div class="tab-content">
+
+      <!-- ─── TAB 1: MAP TAB ─── -->
+      <div class="tab-panel active" id="panel-map">
+        <!-- Live Truck Status Card -->
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">🚛 Live Truck Status</span>
+            <span id="cardStatusBadge" class="badge badge-gray">OFFLINE</span>
+          </h3>
+          <div class="status-metrics">
+            <div class="metric-box">
+              <div class="metric-val" id="metricDistance">—</div>
+              <div class="metric-lbl">Distance</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-val" id="metricSpeed">—</div>
+              <div class="metric-lbl">Speed</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-val" id="metricLastSeen">—</div>
+              <div class="metric-lbl">Last Seen</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Truck Route Card -->
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">🗺️ Truck Route & Trail</span>
+          </h3>
+          <div style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:4px;" id="routeStatusTitle">
+            Live Ward Navigation
+          </div>
+          <div class="route-desc-box">
+            <div>
+              <span id="routeLineDesc">Route line active:</span>
+              <div style="margin-top:4px;" id="routeEtaText">Calculating distance to your home pin...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Proximity Notifications List -->
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">📬 Recent Ward Alerts</span>
+          </h3>
+          <div id="alertsContainer" style="display:flex;flex-direction:column;gap:8px;">
+            <p style="font-size:12.5px;color:var(--muted);">Proximity alerts will trigger automatically when the truck enters your 400m zone.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── TAB 2: CHATBOT TAB ─── -->
+      <div class="tab-panel" id="panel-chat">
+        <div class="info-card" style="padding:14px;">
+          <h3>
+            <span class="card-header-left">🤖 Waste Assistant</span>
+          </h3>
+          <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">
+            Ask questions about waste segregation, compost tips, or collection rules.
+          </p>
+
+          <div class="chat-window" id="chatWindow">
+            <div class="chat-bubble bot">
+              <div class="sender">Assistant</div>
+              Hi! I'm your waste management assistant. Ask me about recycling, composting, wet/dry waste, or anything about SmartWaste!
+            </div>
+          </div>
+
+          <div class="chat-input-row">
+            <input type="text" class="chat-input" id="chatInput" placeholder="Ask e.g. 'How to dispose batteries?'" onkeydown="if(event.key==='Enter')sendChatMessage()">
+            <button type="button" class="btn-send" onclick="sendChatMessage()">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── TAB 3: UPLOAD TAB (Blackspot Report) ─── -->
+      <div class="tab-panel" id="panel-upload">
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">📸 Report Waste Blackspot</span>
+          </h3>
+          <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">
+            Capture an illegal dump or overflowing bin. Your location is automatically tagged and analyzed for wet/dry waste breakdown.
+          </p>
+
+          <div class="upload-zone" id="uploadZone">
+            <input type="file" id="blackspotFileInput" accept="image/*" capture="environment" onchange="handleImageSelection(event)">
+            <div class="upload-zone-icon">📷</div>
+            <div class="upload-zone-text">Tap to snap or select photo</div>
+            <div class="upload-zone-sub">Supports camera capture &amp; gallery</div>
+          </div>
+
+          <div id="uploadPreviewWrap">
+            <img id="uploadPreview" alt="Upload preview">
+            <button type="button" class="clear-preview-btn" onclick="clearSelectedImage()">✕</button>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="blackspotDescription">
+              <span>Description</span>
+              <span style="font-size:11px;color:var(--muted);font-weight:400;">(Optional)</span>
+            </label>
+            <textarea id="blackspotDescription" class="field-textarea" placeholder="e.g. Garbage accumulation near crossroad"></textarea>
+          </div>
+
+          <button type="button" class="btn-primary" id="submitBlackspotBtn" onclick="submitBlackspotReport()">
+            📤 Submit Blackspot Report
+          </button>
+
+          <!-- Classification result card -->
+          <div class="classification-result" id="classificationResult">
+            <div class="classification-title" id="classificationTitle">AI Waste Breakdown</div>
+            <div id="classificationText" style="color:var(--text);font-size:12.5px;"></div>
+            <div class="waste-bar-track">
+              <div class="waste-bar-wet" id="wetBar" style="width:50%;"></div>
+              <div class="waste-bar-dry" id="dryBar" style="width:50%;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:5px;">
+              <span>🟢 Wet: <strong id="wetPctLbl">0%</strong></span>
+              <span>🔵 Dry: <strong id="dryPctLbl">0%</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── TAB 4: INFORM TAB (Missed Truck) ─── -->
+      <div class="tab-panel" id="panel-inform">
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">📢 Report Missed Truck</span>
+          </h3>
+          <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">
+            If the truck did not arrive during your scheduled window, file a report. The system automatically cross-references worker GPS trails.
+          </p>
+
+          <div class="field-group">
+            <label class="field-label" for="complaintMessage">Message (Optional)</label>
+            <textarea id="complaintMessage" class="field-textarea" placeholder="Truck did not arrive today">Truck did not arrive today</textarea>
+          </div>
+
+          <button type="button" class="btn-primary" id="submitComplaintBtn" onclick="submitComplaint()" style="background:linear-gradient(135deg, #ef4444, #dc2626);box-shadow:0 4px 16px rgba(239,68,68,0.3);">
+            🚨 File Complaint
+          </button>
+        </div>
+
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">📋 My Complaints</span>
+            <button type="button" class="btn-outline" style="padding:4px 8px;font-size:11px;" onclick="loadMyComplaints()">Refresh</button>
+          </h3>
+          <div id="complaintsListContainer">
+            <p style="font-size:12.5px;color:var(--muted);">Loading complaints...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── TAB 5: SETTINGS TAB ─── -->
+      <div class="tab-panel" id="panel-settings">
+        <!-- Profile info -->
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">👤 Profile Details</span>
+          </h3>
+          <div class="settings-row">
+            <span class="settings-label">Registered Name</span>
+            <span class="settings-val" id="settingProfileName">—</span>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Home Coordinates</span>
+            <span class="settings-val" id="settingProfileCoords">—</span>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Current Pickup Slot</span>
+            <span class="settings-val" id="settingProfileTime">—</span>
+          </div>
+        </div>
+
+        <!-- Change Pickup Time -->
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">⏰ Change Pickup Time</span>
+          </h3>
+          <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">
+            Update your preferred daily time slot using the AM/PM picker.
+          </p>
+
+          <div class="preset-grid" id="settingsPresetGrid">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="time-picker-box">
+            <div class="custom-time-row">
+              <div class="custom-select-wrap">
+                <select id="settingsHourSelect" class="field-select" onchange="onCustomTimeChange('settings')">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7" selected>7</option>
+                  <option value="8">8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
+                  <option value="11">11</option>
+                  <option value="12">12</option>
+                </select>
+              </div>
+              <div style="font-size:18px;font-weight:700;color:var(--muted);">:</div>
+              <div class="custom-select-wrap">
+                <select id="settingsMinuteSelect" class="field-select" onchange="onCustomTimeChange('settings')">
+                  <option value="00" selected>00</option>
+                  <option value="15">15</option>
+                  <option value="30">30</option>
+                  <option value="45">45</option>
+                </select>
+              </div>
+              <div class="ampm-toggle">
+                <button type="button" class="ampm-btn active" id="settingsAmBtn" onclick="setAmPm('settings', 'AM')">AM</button>
+                <button type="button" class="ampm-btn" id="settingsPmBtn" onclick="setAmPm('settings', 'PM')">PM</button>
+              </div>
+            </div>
+            <div class="time-preview-text" id="settingsTimePreview">
+              Selected: <span class="time-preview-highlight">7:00 AM — Morning (07:00)</span>
+            </div>
+          </div>
+
+          <button type="button" class="btn-primary" onclick="updatePreferredPickupTime()">
+            💾 Save Pickup Time
+          </button>
+        </div>
+
+        <!-- Notification Permission -->
+        <div class="info-card">
+          <h3>
+            <span class="card-header-left">🔔 Notifications</span>
+          </h3>
+          <div class="settings-row">
+            <span class="settings-label">Permission Status</span>
+            <span class="settings-val" id="settingNotifStatusText">checking...</span>
+          </div>
+          <p style="font-size:12px;color:var(--muted);margin:10px 0;">
+            Browser notifications alert you when the truck is 400m away even when this tab is in the background.
+          </p>
+          <button type="button" class="btn-outline" style="width:100%;" onclick="requestNotificationPermissionExplicit()">
+            Request Notification Permission
+          </button>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="info-card" style="border-color:rgba(239,68,68,0.25);">
+          <h3>
+            <span class="card-header-left" style="color:#f87171;">⚠️ Reset &amp; Re-register</span>
+          </h3>
+          <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">
+            Clear local registration cache and set up your profile from scratch.
+          </p>
+          <button type="button" class="btn-outline btn-danger-outline" style="width:100%;" onclick="clearRegistration()">
+            Clear Registration &amp; Restart
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /tab-content -->
+  </aside>
+
+  <!-- RIGHT MAP PANEL (flex: 1) -->
+  <main class="map-wrap">
+    <div id="mainMap"></div>
+
+    <!-- Map Legend -->
+    <div class="map-legend">
+      <div class="leg-item">
+        <span style="font-size:15px;">🏠</span>
+        <span>Your Home Pin</span>
+      </div>
+      <div class="leg-item">
+        <span style="font-size:15px;">🚛</span>
+        <span>Live Garbage Truck</span>
+      </div>
+      <div class="leg-item">
+        <span class="leg-line" style="background:#8b5cf6;"></span>
+        <span>Truck GPS Trail</span>
+      </div>
+      <div class="leg-item">
+        <span class="leg-line" style="background:#06b6d4;"></span>
+        <span>Route Line (Truck → Home)</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Notification Toast Bottom-Right -->
+<div id="toast">
+  <div class="toast-title">
+    <span>🚛</span> <span id="toastTitle">SmartWaste Alert</span>
+  </div>
+  <div class="toast-body" id="toastBody">Truck is approaching your location!</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  /* ─────────────────────────────────────────────────────────────
+     SmartWaste User Dashboard — Client Script
+     ───────────────────────────────────────────────────────────── */
+
+  // State Variables
+  let USER_ID = localStorage.getItem('sw_user_id');
+  let userName = localStorage.getItem('sw_user_name') || '';
+  let userLat = parseFloat(localStorage.getItem('sw_user_lat')) || null;
+  let userLon = parseFloat(localStorage.getItem('sw_user_lon')) || null;
+  let userPreferredTime = localStorage.getItem('sw_user_time') || '07:00';
+
+  // Setup Map & Picker
+  let setupMap = null;
+  let setupMarker = null;
+
+  // Main Map & Layers
+  let mainMap = null;
+  let homeMarker = null;
+  let truckMarker = null;
+  let trailPolyline = null;
+  let routePolyline = null;
+
+  // Polling intervals & state
+  let truckPollInterval = null;
+  let complaintsPollInterval = null;
+  let lastTruckData = null;
+  let hasAlertedWithin400m = false;
+  let toastTimer = null;
+  let activeTab = 'map';
+  let uploadedBase64Image = null;
+
+  // Presets definition for AM/PM picker
+  const TIME_PRESETS = [
+    { label: '6:00 AM', tag: 'Early Morning', h: 6, m: '00', ampm: 'AM', time24: '06:00' },
+    { label: '7:00 AM', tag: 'Morning', h: 7, m: '00', ampm: 'AM', time24: '07:00' },
+    { label: '8:00 AM', tag: 'Morning', h: 8, m: '00', ampm: 'AM', time24: '08:00' },
+    { label: '9:00 AM', tag: 'Late Morning', h: 9, m: '00', ampm: 'AM', time24: '09:00' },
+    { label: '5:00 PM', tag: 'Afternoon', h: 5, m: '00', ampm: 'PM', time24: '17:00' },
+    { label: '6:00 PM', tag: 'Evening', h: 6, m: '00', ampm: 'PM', time24: '18:00' },
+    { label: '7:00 PM', tag: 'Evening', h: 7, m: '00', ampm: 'PM', time24: '19:00' },
+    { label: '8:00 PM', tag: 'Night', h: 8, m: '00', ampm: 'PM', time24: '20:00' }
+  ];
+
+  // Current picker state: { setup: '07:00', settings: '07:00' }
+  const pickerState = {
+    setup: { hour: 7, min: '00', ampm: 'AM', time24: '07:00' },
+    settings: { hour: 7, min: '00', ampm: 'AM', time24: '07:00' }
+  };
+
+  // Helper: Haversine distance in meters
+  function haversineDist(lat1, lon1, lat2, lon2) {
+    if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return null;
+    const p = Math.PI / 180;
+    const a = Math.sin((lat2 - lat1) * p / 2) ** 2 +
+              Math.cos(lat1 * p) * Math.cos(lat2 * p) * Math.sin((lon2 - lon1) * p / 2) ** 2;
+    return 12742000 * Math.asin(Math.sqrt(a));
+  }
+
+  // Sanitizer
+  function escHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  // Format 24h 'HH:MM' into friendly 12h label
+  function formatHumanTime(timeStr) {
+    if (!timeStr || !timeStr.includes(':')) return '7:00 AM — Morning';
+    const parts = timeStr.split(':');
+    let h = parseInt(parts[0], 10);
+    const m = parts[1] || '00';
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+
+    let period = 'Morning';
+    if (h < 7) period = 'Early Morning';
+    else if (h >= 7 && h < 10) period = 'Morning';
+    else if (h >= 10 && h < 12) period = 'Late Morning';
+    else if (h >= 12 && h < 16) period = 'Afternoon';
+    else if (h >= 16 && h < 19) period = 'Evening';
+    else period = 'Night';
+
+    return `${h12}:${m} ${ampm} — ${period}`;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // TIME PICKER COMPONENT LOGIC
+  // ─────────────────────────────────────────────────────────────
+  function initTimePickerPresets(context) {
+    const gridEl = document.getElementById(`${context}PresetGrid`);
+    if (!gridEl) return;
+    gridEl.innerHTML = TIME_PRESETS.map((p, idx) => `
+      <div class="preset-chip ${p.time24 === pickerState[context].time24 ? 'active' : ''}"
+           onclick="selectTimePreset('${context}', ${idx})">
+        <span class="preset-time">${p.label}</span>
+        <span class="preset-tag">${p.tag}</span>
+      </div>
+    `).join('');
+  }
+
+  function selectTimePreset(context, idx) {
+    const p = TIME_PRESETS[idx];
+    pickerState[context] = { hour: p.h, min: p.m, ampm: p.ampm, time24: p.time24 };
+
+    // Sync UI selects
+    const hSelect = document.getElementById(`${context}HourSelect`);
+    const mSelect = document.getElementById(`${context}MinuteSelect`);
+    if (hSelect) hSelect.value = String(p.h);
+    if (mSelect) mSelect.value = p.m;
+
+    updateAmPmButtons(context, p.ampm);
+    updateTimePreview(context);
+    initTimePickerPresets(context);
+  }
+
+  function setAmPm(context, ampm) {
+    pickerState[context].ampm = ampm;
+    updateAmPmButtons(context, ampm);
+    calculateTime24(context);
+  }
+
+  function updateAmPmButtons(context, ampm) {
+    const amBtn = document.getElementById(`${context}AmBtn`);
+    const pmBtn = document.getElementById(`${context}PmBtn`);
+    if (amBtn) amBtn.classList.toggle('active', ampm === 'AM');
+    if (pmBtn) pmBtn.classList.toggle('active', ampm === 'PM');
+  }
+
+  function onCustomTimeChange(context) {
+    const h = parseInt(document.getElementById(`${context}HourSelect`).value, 10);
+    const m = document.getElementById(`${context}MinuteSelect`).value;
+    pickerState[context].hour = h;
+    pickerState[context].min = m;
+    calculateTime24(context);
+  }
+
+  function calculateTime24(context) {
+    let h = pickerState[context].hour;
+    const m = pickerState[context].min;
+    const ampm = pickerState[context].ampm;
+
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+
+    const hh = String(h).padStart(2, '0');
+    pickerState[context].time24 = `${hh}:${m}`;
+
+    updateTimePreview(context);
+    initTimePickerPresets(context);
+  }
+
+  function updateTimePreview(context) {
+    const previewEl = document.getElementById(`${context}TimePreview`);
+    if (!previewEl) return;
+    const friendly = formatHumanTime(pickerState[context].time24);
+    previewEl.innerHTML = `Selected: <span class="time-preview-highlight">${friendly} (${pickerState[context].time24})</span>`;
+  }
+
+  function setPickerFrom24h(context, time24) {
+    if (!time24 || !time24.includes(':')) return;
+    const parts = time24.split(':');
+    let h = parseInt(parts[0], 10);
+    const m = parts[1] || '00';
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+
+    pickerState[context] = { hour: h12, min: m, ampm, time24 };
+    const hSelect = document.getElementById(`${context}HourSelect`);
+    const mSelect = document.getElementById(`${context}MinuteSelect`);
+    if (hSelect) hSelect.value = String(h12);
+    if (mSelect) mSelect.value = m;
+    updateAmPmButtons(context, ampm);
+    updateTimePreview(context);
+    initTimePickerPresets(context);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // SETUP OVERLAY & ONBOARDING
+  // ─────────────────────────────────────────────────────────────
+  function initSetupOverlay() {
+    initTimePickerPresets('setup');
+    updateTimePreview('setup');
+
+    // Init Setup Map Picker (Bangalore coordinates 12.9352, 77.5350)
+    setupMap = L.map('setupMapPicker', { zoomControl: false }).setView([12.9352, 77.5350], 13);
+    L.control.zoom({ position: 'bottomright' }).addTo(setupMap);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(setupMap);
+
+    // Click handler to drop pin
+    setupMap.on('click', function(e) {
+      setUserLocationPin(e.latlng.lat, e.latlng.lng, 'Pin dropped on map');
+    });
+
+    // Default pin at depot
+    setUserLocationPin(12.9352, 77.5350, 'Default Pin (Bangalore)');
+  }
+
+  function setUserLocationPin(lat, lon, sourceText) {
+    userLat = lat;
+    userLon = lon;
+    if (setupMarker) {
+      setupMarker.setLatLng([lat, lon]);
+    } else {
+      setupMarker = L.marker([lat, lon], {
+        icon: L.divIcon({
+          html: '<div style="font-size:26px;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));">📍</div>',
+          className: '', iconSize: [30, 30], iconAnchor: [15, 30]
+        })
+      }).addTo(setupMap);
+    }
+    const locInfo = document.getElementById('locInfo');
+    if (locInfo) {
+      locInfo.innerHTML = `✅ <strong>${sourceText}:</strong> ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    }
+  }
+
+  function detectCurrentLocation() {
+    const btn = document.getElementById('autoLocBtn');
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    btn.innerHTML = '<span>⏳</span> Locating you...';
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        setupMap.setView([lat, lon], 16);
+        setUserLocationPin(lat, lon, 'GPS Detected Location');
+        btn.innerHTML = '<span>✅</span> Location Found!';
+        setTimeout(() => { btn.innerHTML = '<span>📍</span> Use My Current Location'; }, 3000);
+      },
+      err => {
+        btn.innerHTML = '<span>⚠️</span> GPS unavailable — tap map';
+        setTimeout(() => { btn.innerHTML = '<span>📍</span> Use My Current Location'; }, 3500);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
+
+  function proceedToStep2() {
+    const nameInput = document.getElementById('setupName');
+    const name = nameInput.value.trim();
+    if (!name) {
+      alert('Please enter your name or house number.');
+      nameInput.focus();
+      return;
+    }
+    if (!userLat || !userLon) {
+      alert('Please select your home location pin on the map.');
+      return;
+    }
+    userName = name;
+    document.getElementById('step1').classList.remove('active');
+    document.getElementById('step2').classList.add('active');
+  }
+
+  function backToStep1() {
+    document.getElementById('step2').classList.remove('active');
+    document.getElementById('step1').classList.add('active');
+    if (setupMap) setTimeout(() => setupMap.invalidateSize(), 150);
+  }
+
+  async function registerUser() {
+    const prefTime = pickerState.setup.time24;
+    userPreferredTime = prefTime;
+
+    const payload = {
+      id: USER_ID || undefined,
+      name: userName,
+      lat: userLat,
+      lon: userLon,
+      preferred_time: prefTime
+    };
+
+    try {
+      const resp = await fetch('/api/user/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+
+      if (data.ok) {
+        USER_ID = data.id;
+        localStorage.setItem('sw_user_id', USER_ID);
+        localStorage.setItem('sw_user_name', userName);
+        localStorage.setItem('sw_user_lat', String(userLat));
+        localStorage.setItem('sw_user_lon', String(userLon));
+        localStorage.setItem('sw_user_time', prefTime);
+
+        // Hide setup overlay and launch main app
+        document.getElementById('setupOverlay').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+
+        initMainApp();
+        showToast('🎉 Welcome to SmartWaste!', `Profile registered for ${userName}. Tracking active.`);
+      } else {
+        alert('Registration failed: ' + (data.error || 'Server error'));
+      }
+    } catch (err) {
+      alert('Network error while registering. Please check connection.');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // MAIN APP INITIALIZATION
+  // ─────────────────────────────────────────────────────────────
+  function initMainApp() {
+    // Populate header & settings
+    document.getElementById('headerUserName').textContent = userName || 'Resident';
+    document.getElementById('settingProfileName').textContent = userName || '—';
+    document.getElementById('settingProfileCoords').textContent =
+      userLat && userLon ? `${userLat.toFixed(5)}, ${userLon.toFixed(5)}` : '—';
+    document.getElementById('settingProfileTime').textContent = formatHumanTime(userPreferredTime);
+
+    // Initialize Settings AM/PM picker
+    setPickerFrom24h('settings', userPreferredTime);
+
+    // Check Notification API permission status
+    updateNotificationPermissionStatus();
+
+    // Initialize Right Main Map
+    initMainMap();
+
+    // Load Assigned Area Bar
+    loadAssignedArea();
+
+    // Start Polling Truck
+    pollTruckState();
+    if (truckPollInterval) clearInterval(truckPollInterval);
+    truckPollInterval = setInterval(pollTruckState, 5000);
+
+    // Setup Midnight Reset Timer
+    setupMidnightReset();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // MAIN LEAFLET MAP
+  // ─────────────────────────────────────────────────────────────
+  function initMainMap() {
+    const defaultCenter = (userLat && userLon) ? [userLat, userLon] : [12.9352, 77.5350];
+    mainMap = L.map('mainMap', { zoomControl: false }).setView(defaultCenter, 14);
+    L.control.zoom({ position: 'topright' }).addTo(mainMap);
+
+    // Carto Dark Matter Tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(mainMap);
+
+    // User Home Pin
+    if (userLat && userLon) {
+      const gMapsUrl = `https://www.google.com/maps?q=${userLat},${userLon}`;
+      const homeHtml = `
+        <div style="width:36px;height:36px;background:radial-gradient(circle,#22c55e 30%,rgba(34,197,94,0.3) 75%);border:2px solid #4ade80;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(34,197,94,0.6);font-size:18px;">🏠</div>
+      `;
+      homeMarker = L.marker([userLat, userLon], {
+        icon: L.divIcon({ html: homeHtml, className: '', iconSize: [36, 36], iconAnchor: [18, 18] })
+      }).addTo(mainMap);
+
+      const popupContent = `
+        <div style="font-family:'Inter',sans-serif;color:#0e1a10;padding:2px 4px;font-size:12.5px;">
+          <strong style="font-size:13.5px;color:#0e1a10;">Your Home</strong><br>
+          <span style="color:#2f5935;">${escHtml(userName)}</span><br>
+          <a href="${gMapsUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:6px;color:#16a34a;font-weight:700;text-decoration:none;">
+            📍 Open in Google Maps ↗
+          </a>
+        </div>
+      `;
+      homeMarker.bindPopup(popupContent);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // TRUCK POLLING & MAP UPDATES (Every 5s)
+  // ─────────────────────────────────────────────────────────────
+  async function pollTruckState() {
+    try {
+      const res = await fetch('/api/truck');
+      const data = await res.json();
+      lastTruckData = data;
+      renderTruckState(data);
+    } catch (err) {
+      console.warn('Failed to poll truck state:', err);
+    }
+  }
+
+  function renderTruckState(t) {
+    const isLive = (t.gps_status === 'LIVE GPS');
+    const hasCoords = (t.lat !== null && t.lon !== null);
+
+    // Update GPS bar pill
+    const gpsPill = document.getElementById('truckGpsPill');
+    const gpsText = document.getElementById('truckGpsText');
+    const cardBadge = document.getElementById('cardStatusBadge');
+
+    if (isLive) {
+      gpsPill.className = 'status-pill status-live';
+      gpsText.textContent = 'TRUCK LIVE';
+      cardBadge.className = 'badge badge-green';
+      cardBadge.textContent = 'LIVE GPS';
+    } else {
+      gpsPill.className = 'status-pill status-off';
+      gpsText.textContent = t.gps_status || 'GPS OFF';
+      cardBadge.className = 'badge badge-gray';
+      cardBadge.textContent = t.gps_status || 'OFFLINE';
+    }
+
+    // Speed metric
+    const speedEl = document.getElementById('metricSpeed');
+    speedEl.textContent = (t.speed_kmph !== undefined && t.speed_kmph !== null)
+      ? `${t.speed_kmph.toFixed(1)} km/h`
+      : '0.0 km/h';
+
+    // Last seen metric
+    const lastSeenEl = document.getElementById('metricLastSeen');
+    if (t.last_gps_age !== undefined && t.last_gps_age !== null) {
+      lastSeenEl.textContent = t.last_gps_age < 60 ? `${Math.round(t.last_gps_age)}s ago` : `${Math.round(t.last_gps_age / 60)}m ago`;
+    } else {
+      lastSeenEl.textContent = '—';
+    }
+
+    // Distance calculation & Route Line
+    const distEl = document.getElementById('metricDistance');
+    const routeDesc = document.getElementById('routeLineDesc');
+    const routeEta = document.getElementById('routeEtaText');
+
+    let truckCoord = null;
+
+    if (hasCoords) {
+      truckCoord = [t.lat, t.lon];
+    } else {
+      // Depot fallback (12.9352, 77.5350)
+      truckCoord = (t.depot && t.depot.length === 2) ? t.depot : [12.9352, 77.5350];
+    }
+
+    // Haversine distance to home
+    if (userLat !== null && userLon !== null && truckCoord) {
+      const distM = haversineDist(truckCoord[0], truckCoord[1], userLat, userLon);
+      const distKm = (distM / 1000).toFixed(2);
+      distEl.textContent = distM < 1000 ? `${Math.round(distM)} m` : `${distKm} km`;
+
+      // Proximity Alert within 400m
+      if (distM <= 400 && isLive) {
+        const effSpeed = Math.max(t.speed_kmph || 0, 15.0);
+        const etaMin = Math.max(1, Math.round(distM / (effSpeed / 3.6) / 60));
+        const toastMsg = `🚛 Truck is ${Math.round(distM)}m away! Estimated ${etaMin} min${etaMin > 1 ? 's' : ''}.`;
+
+        if (!hasAlertedWithin400m) {
+          hasAlertedWithin400m = true;
+          showToast('🚛 Truck Nearby!', toastMsg);
+
+          // Native browser notification
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('SmartWaste Alert', {
+                body: toastMsg,
+                icon: '/static/favicon.ico'
+              });
+            } catch (e) {}
+          }
+        }
+      } else if (distM > 600) {
+        hasAlertedWithin400m = false; // Reset alert trigger when truck moves away
+      }
+
+      // Route description text
+      if (hasCoords) {
+        const effSpeed = Math.max(t.speed_kmph || 0, 15.0);
+        const etaMin = Math.max(1, Math.round(distM / (effSpeed / 3.6) / 60));
+        routeDesc.textContent = isLive ? 'Live GPS Route Active' : 'Last Known GPS Trail';
+        routeEta.textContent = `Distance: ${Math.round(distM)}m • Est. Arrival: ~${etaMin} min`;
+      } else {
+        routeDesc.textContent = 'Truck parked at Depot:';
+        routeEta.textContent = 'Waiting for driver to initiate GPS sharing.';
+      }
+    } else {
+      distEl.textContent = '—';
+    }
+
+    // Update or create Truck Marker on Main Map
+    if (mainMap && truckCoord) {
+      const isDepot = !hasCoords;
+      const truckHtml = isDepot
+        ? '<div class="truck-icon-depot" title="Truck at Depot">🚛</div>'
+        : '<div class="truck-icon-live" title="Live Truck">🚛</div>';
+
+      const iconSize = isDepot ? [38, 38] : [44, 44];
+      const iconAnchor = isDepot ? [19, 19] : [22, 22];
+
+      if (!truckMarker) {
+        truckMarker = L.marker(truckCoord, {
+          icon: L.divIcon({ html: truckHtml, className: '', iconSize, iconAnchor }),
+          zIndexOffset: 1200
+        }).addTo(mainMap);
+        truckMarker.bindPopup(`<b>Waste Collection Truck</b><br>${isDepot ? 'Stationary at Depot' : 'Live on Collection Route'}`);
+      } else {
+        truckMarker.setLatLng(truckCoord);
+        truckMarker.setIcon(L.divIcon({ html: truckHtml, className: '', iconSize, iconAnchor }));
+      }
+    }
+
+    // Update Truck Trail (Purple / Violet animated dashed polyline #8b5cf6)
+    if (mainMap) {
+      if (t.trail && t.trail.length > 1) {
+        if (!trailPolyline) {
+          trailPolyline = L.polyline(t.trail, {
+            color: '#8b5cf6',
+            weight: 4,
+            opacity: 0.85,
+            dashArray: '8, 8',
+            className: 'anim-dash-purple'
+          }).addTo(mainMap);
+        } else {
+          trailPolyline.setLatLngs(t.trail);
+        }
+      } else if (trailPolyline) {
+        mainMap.removeLayer(trailPolyline);
+        trailPolyline = null;
+      }
+    }
+
+    // Update Route Line from Truck to User Home (Cyan animated dashed polyline #06b6d4)
+    if (mainMap && userLat !== null && userLon !== null && truckCoord) {
+      const routePoints = [truckCoord, [userLat, userLon]];
+      if (!routePolyline) {
+        routePolyline = L.polyline(routePoints, {
+          color: '#06b6d4',
+          weight: 4,
+          opacity: 0.85,
+          dashArray: '8, 8',
+          className: 'anim-dash-cyan'
+        }).addTo(mainMap);
+      } else {
+        routePolyline.setLatLngs(routePoints);
+      }
+    }
+
+    // Update Proximity / Recent Notifications List
+    if (t.notifications && t.notifications.length) {
+      const alertsEl = document.getElementById('alertsContainer');
+      const recent = t.notifications.slice(0, 5);
+      alertsEl.innerHTML = recent.map(n => `
+        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;color:var(--warn);font-size:10.5px;font-weight:700;margin-bottom:3px;">
+            <span>PROXIMITY ALERT</span>
+            <span>${n.ts || ''}</span>
+          </div>
+          <div style="color:var(--text);">${escHtml(n.msg)}</div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ASSIGNED AREA BAR
+  // ─────────────────────────────────────────────────────────────
+  async function loadAssignedArea() {
+    if (!USER_ID) return;
+    const barEl = document.getElementById('assignedAreaText');
+    try {
+      const res = await fetch(`/api/user/${USER_ID}/area`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.area_name) {
+          const workerStr = data.worker_name ? ` • Worker: ${data.worker_name}` : '';
+          barEl.className = 'area-text';
+          barEl.textContent = `Your Area: ${data.area_name}${workerStr}`;
+        } else {
+          barEl.className = 'area-text unassigned';
+          barEl.textContent = 'Area not yet assigned by manager';
+        }
+      } else {
+        barEl.className = 'area-text unassigned';
+        barEl.textContent = 'Area not yet assigned by manager';
+      }
+    } catch (err) {
+      barEl.className = 'area-text unassigned';
+      barEl.textContent = 'Area not yet assigned by manager';
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // NAVIGATION TABS
+  // ─────────────────────────────────────────────────────────────
+  function switchNavTab(tabName) {
+    activeTab = tabName;
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+
+    const tabBtn = document.getElementById(`tabBtn-${tabName}`);
+    const panel = document.getElementById(`panel-${tabName}`);
+    if (tabBtn) tabBtn.classList.add('active');
+    if (panel) panel.classList.add('active');
+
+    // Tab-specific handlers
+    if (tabName === 'map') {
+      if (mainMap) setTimeout(() => mainMap.invalidateSize(), 150);
+    } else if (tabName === 'inform') {
+      loadMyComplaints();
+      if (!complaintsPollInterval) {
+        complaintsPollInterval = setInterval(loadMyComplaints, 30000);
+      }
+    } else {
+      if (complaintsPollInterval) {
+        clearInterval(complaintsPollInterval);
+        complaintsPollInterval = null;
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // CHATBOT TAB
+  // ─────────────────────────────────────────────────────────────
+  async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const question = input.value.trim();
+    if (!question) return;
+    input.value = '';
+
+    const chatWindow = document.getElementById('chatWindow');
+
+    // Append user message
+    const userMsg = document.createElement('div');
+    userMsg.className = 'chat-bubble user';
+    userMsg.innerHTML = `<div class="sender">You</div>${escHtml(question)}`;
+    chatWindow.appendChild(userMsg);
+
+    // Append thinking bubble
+    const thinkingMsg = document.createElement('div');
+    thinkingMsg.className = 'chat-bubble bot thinking';
+    thinkingMsg.id = 'chatThinkingMsg';
+    thinkingMsg.innerHTML = '<span>🤖</span> Thinking...';
+    chatWindow.appendChild(thinkingMsg);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+
+    try {
+      const resp = await fetch('/api/chatbot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, mode: 'user' })
+      });
+      const data = await resp.json();
+
+      const thinkingEl = document.getElementById('chatThinkingMsg');
+      if (thinkingEl) {
+        thinkingEl.remove();
+      }
+
+      const botMsg = document.createElement('div');
+      botMsg.className = 'chat-bubble bot';
+      botMsg.innerHTML = `<div class="sender">Assistant</div>${escHtml(data.answer || 'I could not answer that. Please try again.')}`;
+      chatWindow.appendChild(botMsg);
+    } catch (err) {
+      const thinkingEl = document.getElementById('chatThinkingMsg');
+      if (thinkingEl) {
+        thinkingEl.className = 'chat-bubble bot';
+        thinkingEl.innerHTML = `<div class="sender">Assistant</div>Network error. Could not connect to assistant.`;
+      }
+    }
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // UPLOAD TAB (Blackspot Report)
+  // ─────────────────────────────────────────────────────────────
+  function handleImageSelection(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      uploadedBase64Image = e.target.result;
+      const previewImg = document.getElementById('uploadPreview');
+      const previewWrap = document.getElementById('uploadPreviewWrap');
+      previewImg.src = uploadedBase64Image;
+      previewWrap.style.display = 'block';
+      document.getElementById('uploadZone').style.borderColor = 'var(--accent)';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearSelectedImage() {
+    uploadedBase64Image = null;
+    document.getElementById('blackspotFileInput').value = '';
+    document.getElementById('uploadPreview').src = '';
+    document.getElementById('uploadPreviewWrap').style.display = 'none';
+    document.getElementById('uploadZone').style.borderColor = '';
+  }
+
+  async function submitBlackspotReport() {
+    const desc = document.getElementById('blackspotDescription').value.trim(); // OPTIONAL
+    const submitBtn = document.getElementById('submitBlackspotBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Analyzing & Uploading...';
+
+    // Auto-capture GPS coords from browser geolocation or fallback to registered user lat/lon
+    let reportLat = userLat || 12.9352;
+    let reportLon = userLon || 77.5350;
+
+    if (navigator.geolocation) {
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
+        });
+        reportLat = pos.coords.latitude;
+        reportLon = pos.coords.longitude;
+      } catch (e) {
+        // Fallback to user registered coords
+      }
+    }
+
+    const payload = {
+      user_id: USER_ID,
+      lat: reportLat,
+      lon: reportLon,
+      description: desc,
+      image: uploadedBase64Image
+    };
+
+    try {
+      const resp = await fetch('/api/user/blackspot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+
+      if (data.ok) {
+        // Show waste classification result
+        const resCard = document.getElementById('classificationResult');
+        const resText = document.getElementById('classificationText');
+        const wetBar = document.getElementById('wetBar');
+        const dryBar = document.getElementById('dryBar');
+        const wetLbl = document.getElementById('wetPctLbl');
+        const dryLbl = document.getElementById('dryPctLbl');
+
+        resCard.style.display = 'block';
+        resText.textContent = `Classified as: ${data.waste_class || 'Mostly Wet'} (${data.wet_pct}% wet, ${data.dry_pct}% dry)`;
+        wetBar.style.width = `${data.wet_pct}%`;
+        dryBar.style.width = `${data.dry_pct}%`;
+        wetLbl.textContent = `${data.wet_pct}%`;
+        dryLbl.textContent = `${data.dry_pct}%`;
+
+        showToast('✅ Report Submitted', `Blackspot logged at ${reportLat.toFixed(4)}, ${reportLon.toFixed(4)}.`);
+        clearSelectedImage();
+        document.getElementById('blackspotDescription').value = '';
+      } else {
+        alert('Upload failed: ' + (data.error || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error uploading blackspot report. Check connection.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '📤 Submit Blackspot Report';
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // INFORM TAB (Missed Truck Complaints)
+  // ─────────────────────────────────────────────────────────────
+  async function submitComplaint() {
+    const msgInput = document.getElementById('complaintMessage');
+    const msg = msgInput.value.trim() || 'Truck did not arrive today';
+    const submitBtn = document.getElementById('submitComplaintBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Submitting...';
+
+    const payload = {
+      user_id: USER_ID,
+      lat: userLat || 12.9352,
+      lon: userLon || 77.5350,
+      message: msg
+    };
+
+    try {
+      const resp = await fetch('/api/user/complaint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+
+      if (data.ok) {
+        showToast('🚨 Complaint Filed', 'Your missed truck report has been logged.');
+        msgInput.value = 'Truck did not arrive today';
+        // Immediately refresh list
+        loadMyComplaints();
+      } else {
+        alert('Could not file complaint: ' + (data.error || 'Server error'));
+      }
+    } catch (err) {
+      alert('Network error filing complaint.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '🚨 File Complaint';
+    }
+  }
+
+  async function loadMyComplaints() {
+    if (!USER_ID) return;
+    const container = document.getElementById('complaintsListContainer');
+    try {
+      const resp = await fetch(`/api/user/${USER_ID}/complaints`);
+      if (!resp.ok) {
+        container.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">No complaints filed yet.</p>';
+        return;
+      }
+      const list = await resp.json();
+
+      if (!list || !list.length) {
+        container.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">No complaints filed yet.</p>';
+        return;
+      }
+
+      container.innerHTML = list.map(c => {
+        let badgeClass = 'badge-gray';
+        let badgeText = c.verified_status || 'Pending';
+        if (badgeText === 'Truck Visited') badgeClass = 'badge-green';
+        else if (badgeText === 'Truck Did Not Visit') badgeClass = 'badge-red';
+
+        const dateStr = c.created_at ? c.created_at.slice(0, 16) : 'Today';
+
+        return `
+          <div class="complaint-card">
+            <div class="complaint-header">
+              <span class="complaint-date">📅 ${dateStr}</span>
+              <span class="badge ${badgeClass}">${badgeText}</span>
+            </div>
+            <div class="complaint-msg">${escHtml(c.message)}</div>
+            ${c.verification_note ? `<div class="verification-box"><strong>Verification:</strong> ${escHtml(c.verification_note)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      container.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">No complaints filed yet.</p>';
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // SETTINGS TAB
+  // ─────────────────────────────────────────────────────────────
+  async function updatePreferredPickupTime() {
+    const newTime = pickerState.settings.time24;
+    try {
+      const resp = await fetch(`/api/user/${USER_ID}/time`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferred_time: newTime })
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        userPreferredTime = newTime;
+        localStorage.setItem('sw_user_time', newTime);
+        document.getElementById('settingProfileTime').textContent = formatHumanTime(newTime);
+        showToast('✅ Preferences Updated', `Pickup time saved as ${formatHumanTime(newTime)}.`);
+      } else {
+        alert('Could not update time: ' + (data.error || 'Server error'));
+      }
+    } catch (err) {
+      alert('Error updating pickup time.');
+    }
+  }
+
+  function updateNotificationPermissionStatus() {
+    const textEl = document.getElementById('settingNotifStatusText');
+    const btnText = document.getElementById('notifPermBtnText');
+    const toggleBtn = document.getElementById('notifPermBtn');
+
+    if (!('Notification' in window)) {
+      if (textEl) textEl.textContent = 'Unsupported in browser';
+      if (btnText) btnText.textContent = 'No Notifs';
+      return;
+    }
+
+    const perm = Notification.permission;
+    if (textEl) textEl.textContent = perm.toUpperCase();
+
+    if (perm === 'granted') {
+      if (btnText) btnText.textContent = 'Alerts Active';
+      if (toggleBtn) toggleBtn.classList.add('granted');
+    } else if (perm === 'denied') {
+      if (btnText) btnText.textContent = 'Denied';
+      if (toggleBtn) toggleBtn.classList.remove('granted');
+    } else {
+      if (btnText) btnText.textContent = 'Enable Alerts';
+      if (toggleBtn) toggleBtn.classList.remove('granted');
+    }
+  }
+
+  function toggleNotificationPermission() {
+    if (!('Notification' in window)) {
+      alert('Notifications are not supported in this browser.');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      showToast('🔔 Notifications Active', 'Proximity alerts will pop up when the truck approaches.');
+      return;
+    }
+    requestNotificationPermissionExplicit();
+  }
+
+  function requestNotificationPermissionExplicit() {
+    if (!('Notification' in window)) return;
+    Notification.requestPermission().then(permission => {
+      updateNotificationPermissionStatus();
+      if (permission === 'granted') {
+        showToast('🎉 Notifications Enabled', 'You will receive arrival alerts within 400m.');
+      } else {
+        showToast('⚠️ Permission Denied', 'Browser notifications were denied.');
+      }
+    });
+  }
+
+  function clearRegistration() {
+    if (confirm('Are you sure you want to clear your SmartWaste registration and reset to setup mode?')) {
+      localStorage.removeItem('sw_user_id');
+      localStorage.removeItem('sw_user_name');
+      localStorage.removeItem('sw_user_lat');
+      localStorage.removeItem('sw_user_lon');
+      localStorage.removeItem('sw_user_time');
+      location.reload();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // MIDNIGHT RESET
+  // ─────────────────────────────────────────────────────────────
+  function setupMidnightReset() {
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+    const msToMidnight = tomorrow.getTime() - now.getTime();
+
+    setTimeout(() => {
+      // Midnight reset actions
+      if (routePolyline && mainMap) {
+        mainMap.removeLayer(routePolyline);
+        routePolyline = null;
+      }
+      if (trailPolyline && mainMap) {
+        mainMap.removeLayer(trailPolyline);
+        trailPolyline = null;
+      }
+      hasAlertedWithin400m = false;
+      loadAssignedArea();
+      setupMidnightReset(); // reschedule next midnight
+    }, msToMidnight);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // TOAST NOTIFICATIONS
+  // ─────────────────────────────────────────────────────────────
+  function showToast(title, body) {
+    const toast = document.getElementById('toast');
+    document.getElementById('toastTitle').textContent = title;
+    document.getElementById('toastBody').textContent = body;
+
+    toast.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.classList.remove('show');
+    }, 6000);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // BOOTSTRAP LOGIC
+  // ─────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    if (USER_ID) {
+      // Already registered: check if user exists on backend
+      fetch(`/api/user/${USER_ID}`)
+        .then(r => r.json())
+        .then(u => {
+          if (u && u.id) {
+            userName = u.name || userName;
+            userLat = (u.lat !== undefined && u.lat !== null) ? u.lat : userLat;
+            userLon = (u.lon !== undefined && u.lon !== null) ? u.lon : userLon;
+            userPreferredTime = u.preferred_time || userPreferredTime;
+
+            localStorage.setItem('sw_user_name', userName);
+            localStorage.setItem('sw_user_lat', String(userLat));
+            localStorage.setItem('sw_user_lon', String(userLon));
+            localStorage.setItem('sw_user_time', userPreferredTime);
+
+            document.getElementById('setupOverlay').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            initMainApp();
+          } else {
+            // User ID not found in database, show setup overlay
+            initSetupOverlay();
+          }
+        })
+        .catch(() => {
+          // If offline or fetch error, proceed with cached localStorage data
+          document.getElementById('setupOverlay').classList.add('hidden');
+          document.getElementById('mainApp').classList.remove('hidden');
+          initMainApp();
+        });
+    } else {
+      // New user: show setup overlay
+      initSetupOverlay();
+    }
+  });
+</script>
+<script>
+  window.SW_CHATBOT_CONFIG = {
+    role: 'resident',
+    userId: localStorage.getItem('sw_user_id') || null,
+    apiBase: '',
+  };
+</script>
+<script src="/static/chatbot.js"></script>
+</body>
+</html>

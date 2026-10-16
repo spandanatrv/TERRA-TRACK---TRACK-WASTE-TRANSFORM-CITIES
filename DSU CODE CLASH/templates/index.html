@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartWaste — Select Mode</title>
+  <meta name="description" content="Smart waste management platform for residents, workers and managers. Real-time GPS tracking, chatbot assistance, and blackspot reporting.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080e0a;
+      --surface: #0f1a12;
+      --border: #1e3024;
+      --user: #22c55e;
+      --worker: #f59e0b;
+      --manager: #3b82f6;
+      --text: #e8f5eb;
+      --muted: #6b8f72;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 40px 24px 48px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      position: relative;
+    }
+    /* center vertically on large screens */
+    @media (min-height: 700px) {
+      body { justify-content: center; }
+    }
+
+    /* Animated background blobs — fixed and behind everything */
+    .blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.12;
+      animation: float 8s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .blob-1 { width: 500px; height: 500px; background: #22c55e; top: -150px; left: -150px; animation-delay: 0s; }
+    .blob-2 { width: 400px; height: 400px; background: #3b82f6; bottom: -100px; right: -100px; animation-delay: -3s; }
+    .blob-3 { width: 300px; height: 300px; background: #f59e0b; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: -6s; }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      33% { transform: translate(30px,-20px) scale(1.05); }
+      66% { transform: translate(-20px,30px) scale(0.95); }
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 960px;
+      width: 100%;
+    }
+    .dots { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: radial-gradient(circle, rgba(34,197,94,0.07) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .logo-icon {
+      font-size: 52px;
+      display: block;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 0 24px rgba(34, 197, 94, 0.5));
+    }
+
+    .logo h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #22c55e 0%, #86efac 50%, #3b82f6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .logo p {
+      color: var(--muted);
+      font-size: 16px;
+      margin-top: 8px;
+      font-weight: 400;
+    }
+
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .mode-grid { grid-template-columns: 1fr; gap: 16px; }
+      .logo { margin-bottom: 32px; }
+      .mode-card { padding: 28px 22px; }
+    }
+
+    .mode-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 36px 28px;
+      cursor: pointer;
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      text-decoration: none;
+      color: inherit;
+      position: relative;
+      overflow: hidden;
+      display: block;
+    }
+
+    .mode-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 24px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .mode-card.user::before { background: radial-gradient(circle at 30% 30%, rgba(34,197,94,0.12), transparent 70%); }
+    .mode-card.worker::before { background: radial-gradient(circle at 30% 30%, rgba(245,158,11,0.12), transparent 70%); }
+    .mode-card.manager::before { background: radial-gradient(circle at 30% 30%, rgba(59,130,246,0.12), transparent 70%); }
+
+    .mode-card:hover::before { opacity: 1; }
+
+    .mode-card:hover {
+      transform: translateY(-6px) scale(1.02);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    }
+
+    .mode-card.user:hover { border-color: var(--user); }
+    .mode-card.worker:hover { border-color: var(--worker); }
+    .mode-card.manager:hover { border-color: var(--manager); }
+
+    .mode-icon {
+      font-size: 48px;
+      display: block;
+      margin-bottom: 20px;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+      transition: transform 0.3s;
+    }
+    .mode-card:hover .mode-icon { transform: scale(1.1) rotate(-5deg); }
+
+    .mode-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 99px;
+      margin-bottom: 12px;
+    }
+
+    .user .mode-badge { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .worker .mode-badge { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .manager .mode-badge { background: rgba(59,130,246,0.15); color: #60a5fa; }
+
+    .mode-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.01em;
+    }
+
+    .mode-desc {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+      margin-bottom: 24px;
+    }
+
+    .mode-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mode-features li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #9cbfa1;
+    }
+
+    .feat-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .user .feat-dot { background: var(--user); }
+    .worker .feat-dot { background: var(--worker); }
+    .manager .feat-dot { background: var(--manager); }
+
+    .enter-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 28px;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+      position: relative;
+      z-index: 1;
+    }
+
+    .user .enter-btn { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .worker .enter-btn { background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .manager .enter-btn { background: rgba(59,130,246,0.12); color: #60a5fa; }
+
+    .mode-card:hover .enter-btn { opacity: 0.9; }
+
+    .footer-note {
+      text-align: center;
+      margin-top: 48px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+
+  </style>
+  <link rel="stylesheet" href="/static/chatbot.css">
+</head>
+<body>
+  <div class="dots"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <div class="container">
+    <div class="logo">
+      <span class="logo-icon">♻️</span>
+      <h1>SmartWaste</h1>
+      <p>Real-time waste management platform — choose your dashboard</p>
+    </div>
+
+    <div class="mode-grid">
+      <!-- User Mode -->
+      <a href="/user" class="mode-card user" id="btn-user" onclick="saveMode('user')">
+        <span class="mode-icon">🏠</span>
+        <span class="mode-badge">Resident</span>
+        <h2 class="mode-title">User Mode</h2>
+        <p class="mode-desc">Track your garbage truck in real-time, report blackspots, and get notified when the truck is near.</p>
+        <ul class="mode-features">
+          <li><span class="feat-dot"></span>Live truck tracking on map</li>
+          <li><span class="feat-dot"></span>Proximity notifications</li>
+          <li><span class="feat-dot"></span>AI waste management chatbot</li>
+          <li><span class="feat-dot"></span>Upload blackspot photos</li>
+          <li><span class="feat-dot"></span>File complaints</li>
+        </ul>
+        <div class="enter-btn">
+          <span>Enter User Dashboard</span>
+          <span>→</span>
+        </div>
+      </a>
+
+      <!-- Worker Mode -->
+      <a href="/worker" class="mode-card worker" id="btn-worker" onclick="saveMode('worker')">
+        <span class="mode-icon">🚛</span>
+        <span class="mode-badge">Driver / Worker</span>
+        <h2 class="mode-title">Worker Mode</h2>
+        <p class="mode-desc">View your assigned collection area, track coverage in real-time, and upload cleaning proof.</p>
+        <ul class="mode-features">
+          <li><span class="feat-dot"></span>Assigned area map (red→green)</li>
+          <li><span class="feat-dot"></span>Optimal collection schedule</li>
+          <li><span class="feat-dot"></span>Upload proof of cleaning</li>
+          <li><span class="feat-dot"></span>Safety tips chatbot</li>
+        </ul>
+        <div class="enter-btn">
+          <span>Enter Worker Dashboard</span>
+          <span>→</span>
+        </div>
+      </a>
+
+      <!-- Manager Mode -->
+      <a href="/manager" class="mode-card manager" id="btn-manager" onclick="saveMode('manager')">
+        <span class="mode-icon">📊</span>
+        <span class="mode-badge">Supervisor</span>
+        <h2 class="mode-title">Manager Mode</h2>
+        <p class="mode-desc">Assign workers, monitor all truck coverage, analyze pickup times, and manage blackspot reports.</p>
+        <ul class="mode-features">
+          <li><span class="feat-dot"></span>Assign workers to areas</li>
+          <li><span class="feat-dot"></span>All-truck coverage map</li>
+          <li><span class="feat-dot"></span>Time analysis algorithm</li>
+          <li><span class="feat-dot"></span>Blackspot & complaint panel</li>
+          <li><span class="feat-dot"></span>Complaint verification</li>
+        </ul>
+        <div class="enter-btn">
+          <span>Enter Manager Dashboard</span>
+          <span>→</span>
+        </div>
+      </a>
+    </div>
+
+    <p class="footer-note">SmartWaste Digital Twin &bull; Built for DSU Code Clash &bull; Powered by real-time GPS</p>
+  </div>
+
+  <script>
+    function saveMode(mode) {
+      localStorage.setItem('sw_mode', mode);
+    }
+    // Highlight card if already registered in that mode
+    const uid = localStorage.getItem('sw_user_id');
+    const wid = localStorage.getItem('sw_worker_id');
+    if (uid) document.getElementById('btn-user').querySelector('.enter-btn span').textContent = 'Continue as User';
+    if (wid) document.getElementById('btn-worker').querySelector('.enter-btn span').textContent = 'Continue as Worker';
+  </script>
+<script>
+  window.SW_CHATBOT_CONFIG = {
+    role: 'unknown',
+    apiBase: '',
+  };
+</script>
+<script src="/static/chatbot.js"></script>
+</body>
+</html>

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Truck Driver Terminal — Live GPS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f1412;
+      --card: #18201d;
+      --card-border: #25332e;
+      --ink: #e8edea;
+      --muted: #879990;
+      --accent: #22c55e;
+      --accent-glow: rgba(34, 197, 94, 0.25);
+      --warn: #f59e0b;
+      --warn-glow: rgba(245, 158, 11, 0.25);
+      --bad: #ef4444;
+      --bad-glow: rgba(239, 68, 68, 0.25);
+      --wait: #3b82f6;
+      --wait-glow: rgba(59, 130, 246, 0.25);
+      --r: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.5 "Public Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      font-size: 26px;
+      background: #1e2a25;
+      padding: 6px 10px;
+      border-radius: var(--r);
+      border: 1px solid var(--card-border);
+    }
+    .brand-title {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.01em;
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Status Badge Card */
+    .status-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--r);
+      padding: 18px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      transition: border-color 0.3s ease;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: #232d29;
+      color: var(--muted);
+      border: 1px solid #33423c;
+      transition: all 0.3s ease;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    /* Status Colors */
+    .status-card.live { border-color: var(--accent); }
+    .status-pill.live {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border-color: var(--accent);
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+    .status-pill.live .status-dot {
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+      animation: pulse 1.5s infinite;
+    }
+
+    .status-card.wait { border-color: var(--wait); }
+    .status-pill.wait {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border-color: var(--wait);
+      box-shadow: 0 0 16px var(--wait-glow);
+    }
+    .status-pill.wait .status-dot {
+      background: #3b82f6;
+      box-shadow: 0 0 8px #3b82f6;
+      animation: pulse 1s infinite;
+    }
+
+    .status-card.stale { border-color: var(--warn); }
+    .status-pill.stale {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border-color: var(--warn);
+      box-shadow: 0 0 16px var(--warn-glow);
+    }
+    .status-pill.stale .status-dot {
+      background: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+      animation: pulse 0.8s infinite;
+    }
+
+    .status-card.disconnected { border-color: var(--card-border); }
+    .status-pill.disconnected {
+      background: rgba(239, 68, 68, 0.12);
+      color: #f87171;
+      border-color: #7f1d1d;
+    }
+    .status-pill.disconnected .status-dot {
+      background: #ef4444;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.6; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.6; }
+    }
+
+    .status-desc {
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 20px;
+    }
+
+    /* Action Button */
+    .btn-action {
+      width: 100%;
+      padding: 16px 20px;
+      font: 700 16px/1 "Public Sans", sans-serif;
+      border-radius: var(--r);
+      border: 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-start {
+      background: #15803d;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(21, 128, 61, 0.4);
+    }
+    .btn-start:active { background: #166534; transform: scale(0.98); }
+    .btn-stop {
+      background: #991b1b;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(153, 27, 27, 0.4);
+    }
+    .btn-stop:active { background: #7f1d1d; transform: scale(0.98); }
+
+    /* Telemetry Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--r);
+      padding: 12px 14px;
+    }
+    .card.full {
+      grid-column: span 2;
+    }
+    .card-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .card-val {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--ink);
+      word-break: break-all;
+    }
+    .card-val.large {
+      font-size: 20px;
+    }
+    .card-hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Warning / Info Alert */
+    .alert {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fde68a;
+      border-radius: var(--r);
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.4;
+      display: none;
+    }
+    .alert.active { display: block; }
+    .alert b { color: #fff; }
+
+    footer {
+      margin-top: auto;
+      padding-top: 10px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    footer a { color: #60a5fa; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🚛</div>
+      <div>
+        <div class="brand-title">Driver Terminal</div>
+        <div class="brand-sub">Real-Time Mobile GPS Stream</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Insecure Context Warning (shown automatically on HTTP over non-localhost) -->
+  <div id="alertInsecure" class="alert">
+    <b>⚠️ Insecure Origin Notice:</b><br>
+    Mobile browsers strictly block GPS location over insecure HTTP unless using <code>localhost</code>.<br>
+    Please use <b>HTTPS</b> (<code>https://...</code>) or <b>Chrome USB Port Forwarding</b> (<code>localhost:5000</code>).
+  </div>
+
+  <!-- Error / Permission Alert -->
+  <div id="alertError" class="alert"></div>
+
+  <!-- Primary Status Card -->
+  <div id="statusCard" class="status-card disconnected">
+    <div id="statusPill" class="status-pill disconnected">
+      <span class="status-dot"></span>
+      <span id="statusText">GPS DISCONNECTED</span>
+    </div>
+    <div id="statusDesc" class="status-desc">Tap below to broadcast real mobile coordinates.</div>
+  </div>
+
+  <!-- Toggle Button -->
+  <button id="btnToggle" class="btn-action btn-start" onclick="toggleSharing()">
+    <span>📡 Start Sharing Location</span>
+  </button>
+
+  <!-- Telemetry Dashboard -->
+  <div class="grid">
+    <div class="card full">
+      <div class="card-label">Current Position</div>
+      <div id="valCoords" class="card-val">—</div>
+      <div id="valAltitude" class="card-hint">Altitude: —</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">GPS Accuracy</div>
+      <div id="valAccuracy" class="card-val">—</div>
+      <div id="valAccQuality" class="card-hint">Signal: —</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Speed</div>
+      <div id="valSpeed" class="card-val large">0.0 <span style="font-size:12px;color:var(--muted)">km/h</span></div>
+      <div id="valHeading" class="card-hint">Heading: —</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Updates Sent</div>
+      <div id="valUpdates" class="card-val large">0</div>
+      <div id="valLastSent" class="card-hint">Last: —</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Active Ward Run</div>
+      <div id="valRunStatus" class="card-val" style="font-size:13px">Checking...</div>
+      <div id="valStops" class="card-hint">—</div>
+    </div>
+  </div>
+
+  <footer>
+    BBMP Garbage Twin &bull; <a href="/" target="_blank">Open Ward Dashboard</a>
+  </footer>
+
+  <script>
+    // State management
+    let watchId = null;
+    let wakeLock = null;
+    let updateCount = 0;
+    let lastFixTime = null;
+    let staleTimer = null;
+    let currentStatus = "GPS DISCONNECTED";
+
+    const statusCard = document.getElementById("statusCard");
+    const statusPill = document.getElementById("statusPill");
+    const statusText = document.getElementById("statusText");
+    const statusDesc = document.getElementById("statusDesc");
+    const btnToggle = document.getElementById("btnToggle");
+    const alertInsecure = document.getElementById("alertInsecure");
+    const alertError = document.getElementById("alertError");
+
+    const valCoords = document.getElementById("valCoords");
+    const valAltitude = document.getElementById("valAltitude");
+    const valAccuracy = document.getElementById("valAccuracy");
+    const valAccQuality = document.getElementById("valAccQuality");
+    const valSpeed = document.getElementById("valSpeed");
+    const valHeading = document.getElementById("valHeading");
+    const valUpdates = document.getElementById("valUpdates");
+    const valLastSent = document.getElementById("valLastSent");
+    const valRunStatus = document.getElementById("valRunStatus");
+    const valStops = document.getElementById("valStops");
+
+    // Detect Secure Context (required by modern mobile browsers for Geolocation)
+    if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+      alertInsecure.classList.add("active");
+    }
+
+    function setStatus(status, desc = "") {
+      currentStatus = status;
+      statusText.textContent = status;
+      statusCard.className = "status-card";
+      statusPill.className = "status-pill";
+
+      switch (status) {
+        case "LIVE GPS":
+          statusCard.classList.add("live");
+          statusPill.classList.add("live");
+          statusDesc.textContent = desc || "Streaming real-time coordinates to twin.";
+          break;
+        case "WAITING FOR GPS":
+          statusCard.classList.add("wait");
+          statusPill.classList.add("wait");
+          statusDesc.textContent = desc || "Acquiring mobile GPS satellite lock...";
+          break;
+        case "LOCATION STALE":
+          statusCard.classList.add("stale");
+          statusPill.classList.add("stale");
+          statusDesc.textContent = desc || "No recent GPS updates. Check phone sky view.";
+          break;
+        case "GPS DISCONNECTED":
+        default:
+          statusCard.classList.add("disconnected");
+          statusPill.classList.add("disconnected");
+          statusDesc.textContent = desc || "Location sharing stopped.";
+          break;
+      }
+    }
+
+    function showError(msg) {
+      alertError.textContent = msg;
+      alertError.classList.add("active");
+    }
+
+    function clearError() {
+      alertError.textContent = "";
+      alertError.classList.remove("active");
+    }
+
+    // Keep screen awake while driving
+    async function requestWakeLock() {
+      if ("wakeLock" in navigator) {
+        try {
+          wakeLock = await navigator.wakeLock.request("screen");
+        } catch (e) {
+          console.warn("Screen Wake Lock not permitted:", e);
+        }
+      }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+    }
+
+    // Start / Stop Toggle
+    async function toggleSharing() {
+      if (watchId !== null) {
+        stopSharing();
+      } else {
+        startSharing();
+      }
+    }
+
+    async function startSharing() {
+      clearError();
+
+      if (!("geolocation" in navigator)) {
+        showError("❌ Geolocation API is not supported by your browser.");
+        return;
+      }
+
+      setStatus("WAITING FOR GPS", "Requesting GPS permissions and satellite lock...");
+      btnToggle.className = "btn-action btn-stop";
+      btnToggle.innerHTML = "<span>🛑 Stop Sharing</span>";
+
+      // Signal backend that driver started sharing
+      fetch("/api/truck/start_gps", { method: "POST" }).catch(() => {});
+      requestWakeLock();
+
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      };
+
+      try {
+        watchId = navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, options);
+      } catch (err) {
+        onGpsError(err);
+      }
+
+      // Start watchdog timer to detect stale location if watchPosition stops firing
+      resetStaleWatchdog();
+    }
+
+    async function stopSharing() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (staleTimer) {
+        clearTimeout(staleTimer);
+        staleTimer = null;
+      }
+      releaseWakeLock();
+
+      btnToggle.className = "btn-action btn-start";
+      btnToggle.innerHTML = "<span>📡 Start Sharing Location</span>";
+      setStatus("GPS DISCONNECTED", "Location sharing stopped by driver.");
+
+      // Inform backend immediately
+      try {
+        await fetch("/api/truck/stop_gps", { method: "POST" });
+      } catch (e) {}
+
+      pollRunStatus();
+    }
+
+    function resetStaleWatchdog() {
+      if (staleTimer) clearTimeout(staleTimer);
+      // If no new position arrives within 12 seconds, switch to LOCATION STALE
+      staleTimer = setTimeout(() => {
+        if (watchId !== null && currentStatus === "LIVE GPS") {
+          setStatus("LOCATION STALE", "No GPS fix received in last 12 seconds.");
+        }
+      }, 12000);
+    }
+
+    async function onGpsSuccess(pos) {
+      clearError();
+      const coords = pos.coords;
+      const now = new Date();
+      lastFixTime = now;
+
+      // Extract real telemetry
+      const lat = coords.latitude;
+      const lon = coords.longitude;
+      const accuracy = coords.accuracy;
+      const speed = coords.speed !== null && !isNaN(coords.speed) ? Math.max(0, coords.speed) : null;
+      const heading = coords.heading !== null && !isNaN(coords.heading) ? coords.heading : null;
+      const altitude = coords.altitude !== null && !isNaN(coords.altitude) ? coords.altitude : null;
+
+      // Update UI Telemetry
+      valCoords.textContent = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+      valAltitude.textContent = altitude !== null ? `Altitude: ${altitude.toFixed(1)} m` : "Altitude: —";
+      valAccuracy.textContent = `± ${accuracy.toFixed(1)} m`;
+
+      if (accuracy < 10) {
+        valAccQuality.textContent = "Signal: Excellent (<10m)";
+        valAccQuality.style.color = "#4ade80";
+      } else if (accuracy < 30) {
+        valAccQuality.textContent = "Signal: Good (<30m)";
+        valAccQuality.style.color = "#fbbf24";
+      } else {
+        valAccQuality.textContent = "Signal: Poor (>30m)";
+        valAccQuality.style.color = "#f87171";
+      }
+
+      const kmph = speed !== null ? (speed * 3.6).toFixed(1) : "0.0";
+      valSpeed.innerHTML = `${kmph} <span style="font-size:12px;color:var(--muted)">km/h</span>`;
+      valHeading.textContent = heading !== null ? `Heading: ${heading.toFixed(0)}°` : "Heading: —";
+
+      setStatus("LIVE GPS", `Broadcasting live coordinates (±${accuracy.toFixed(1)}m)`);
+      resetStaleWatchdog();
+
+      // Transmit to Flask backend
+      const payload = {
+        lat: lat,
+        lon: lon,
+        accuracy: accuracy,
+        speed: speed,
+        heading: heading,
+        altitude: altitude,
+        timestamp: pos.timestamp || Date.now()
+      };
+
+      try {
+        const res = await fetch("/api/truck/location", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          updateCount++;
+          valUpdates.textContent = updateCount;
+          valLastSent.textContent = `Sent ${now.toLocaleTimeString()}`;
+          const json = await res.json();
+          if (json.total_stops > 0) {
+            valRunStatus.textContent = `Run Active (${json.visited}/${json.total_stops} done)`;
+          }
+        } else {
+          valLastSent.textContent = "Server response error";
+        }
+      } catch (err) {
+        valLastSent.textContent = "Network error (retrying...)";
+      }
+    }
+
+    function onGpsError(err) {
+      let msg = "GPS Error";
+      switch (err.code) {
+        case 1: // PERMISSION_DENIED
+          msg = "❌ Location permission was denied. Please allow location permissions in your browser settings.";
+          stopSharing();
+          break;
+        case 2: // POSITION_UNAVAILABLE
+          msg = "⚠️ GPS position unavailable. Make sure your phone's GPS / Location toggle is turned ON.";
+          setStatus("LOCATION STALE", "GPS position unavailable.");
+          break;
+        case 3: // TIMEOUT
+          msg = "⏳ GPS request timed out. Trying to acquire satellite lock outdoors...";
+          setStatus("WAITING FOR GPS", "Acquiring GPS fix...");
+          break;
+        default:
+          msg = "❌ Location error: " + (err.message || "Unknown error");
+          break;
+      }
+      showError(msg);
+    }
+
+    // Periodically fetch ward run status
+    async function pollRunStatus() {
+      try {
+        const res = await fetch("/api/truck");
+        if (res.ok) {
+          const t = await res.json();
+          if (t.window && t.stops && t.stops.length) {
+            valRunStatus.textContent = `Active Window: ${t.window[0]}:00 - ${t.window[1]}:00`;
+            valStops.textContent = `${t.visited_count} of ${t.total_stops} stops completed`;
+          } else {
+            valRunStatus.textContent = "Standby (No active run)";
+            valStops.textContent = "Planner hasn't dispatched a run yet";
+          }
+        }
+      } catch (e) {}
+    }
+
+    pollRunStatus();
+    setInterval(pollRunStatus, 5000);
+  </script>
+</body>
+</html>
